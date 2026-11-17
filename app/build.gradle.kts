@@ -29,4 +29,5 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.1")
     implementation("androidx.core:core-ktx:1.16.0")
+    testImplementation("junit:junit:4.13.2")
 }
