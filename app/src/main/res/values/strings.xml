@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">NEXUS AI</string>
+    <string name="accessibility_description">Сервис NEXUS AI для выполнения разрешённых пользователем действий на экране.</string>
+</resources>
