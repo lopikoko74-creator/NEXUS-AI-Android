@@ -73,6 +73,9 @@ object ModelStorage {
                     sink.write(header)
                     val buffer = ByteArray(1024 * 1024)
                     while (true) {
+                        if (StatFs(modelDir.absolutePath).availableBytes < 16L * 1024L * 1024L) {
+                            throw IllegalStateException("Недостаточно места: импорт остановлен до заполнения памяти")
+                        }
                         val count = source.read(buffer)
                         if (count < 0) break
                         sink.write(buffer, 0, count)
