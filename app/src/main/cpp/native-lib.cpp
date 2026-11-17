@@ -43,7 +43,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
     }
 
     llama_model_params params = llama_model_default_params();
-    params.use_mmap = true;
+    params.load_mode = LLAMA_LOAD_MODE_MMAP;
     g_model = llama_model_load_from_file(path, params);
     env->ReleaseStringUTFChars(jpath, path);
 
