@@ -41,11 +41,12 @@ class MainActivity : ComponentActivity() {
         setContent {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
             var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
+            var engineStatus by remember { mutableStateOf("Нативный движок ещё не запускался") }
             var modelStatus by remember {
                 val savedPath = prefs.getString("model_file", null)
                 val savedFile = savedPath?.let(::File)
                 mutableStateOf(
-                    if (savedFile?.isFile == true) "GGUF импортирован: ${savedFile.name}. Движок инференса ещё не подключён."
+                    if (savedFile?.isFile == true) "GGUF импортирован: ${savedFile.name}. Можно вручную загрузить в llama.cpp."
                     else "Модель ещё не импортирована в хранилище приложения"
                 )
             }
@@ -82,13 +83,49 @@ class MainActivity : ComponentActivity() {
                                             try {
                                                 val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri.orEmpty()))
                                                 prefs.edit().putString("model_file", imported.absolutePath).apply()
-                                                modelStatus = "Импорт завершён: ${imported.name}. Движок инференса подключается следующим этапом."
+                                                modelStatus = "Импорт завершён: ${imported.name}. llama.cpp готов к ручной загрузке."
                                             } catch (error: Exception) {
                                                 modelStatus = "Ошибка импорта: ${error.message ?: "неизвестная ошибка"}"
                                             }
                                         }
                                     }) { Text("Подготовить модель") }
                                 }
+                            }
+                        }
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Локальный ИИ — llama.cpp", style = MaterialTheme.typography.titleMedium)
+                                Text("Загрузка модели выполняется только после нажатия. Для POCO F6 начни с GGUF 2–4B в квантизации Q4_K_M. Во время загрузки возможен высокий расход RAM и нагрев.")
+                                Text(engineStatus)
+                                Button(onClick = {
+                                    this@MainActivity.lifecycleScope.launch {
+                                        val path = prefs.getString("model_file", null)
+                                        val file = path?.let(::File)
+                                        if (file == null || !file.isFile) {
+                                            engineStatus = "Сначала выбери и подготовь GGUF-файл."
+                                        } else {
+                                            engineStatus = "Инициализация llama.cpp и загрузка модели…"
+                                            try {
+                                                val info = NativeLlamaEngine.getInstance(this@MainActivity).loadModel(file)
+                                                engineStatus = "Модель загружена: $info"
+                                            } catch (error: LinkageError) {
+                                                engineStatus = "Ошибка нативного движка: ${error.message ?: "библиотека не загрузилась"}"
+                                            } catch (error: Exception) {
+                                                engineStatus = "Не удалось загрузить модель: ${error.message ?: "неизвестная ошибка"}"
+                                            }
+                                        }
+                                    }
+                                }) { Text("Загрузить модель в llama.cpp") }
+                                OutlinedButton(onClick = {
+                                    this@MainActivity.lifecycleScope.launch {
+                                        try {
+                                            NativeLlamaEngine.getInstance(this@MainActivity).unloadModel()
+                                            engineStatus = "Модель выгружена из памяти."
+                                        } catch (error: Exception) {
+                                            engineStatus = "Ошибка выгрузки: ${error.message ?: "неизвестная ошибка"}"
+                                        }
+                                    }
+                                }) { Text("Выгрузить модель из RAM") }
                             }
                         }
                         Card(Modifier.fillMaxWidth()) {
@@ -103,8 +140,8 @@ class MainActivity : ComponentActivity() {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Текущий этап", style = MaterialTheme.typography.titleMedium)
-                                Text("Экран приложения, выбор GGUF-файла и регистрация AccessibilityService добавлены.")
-                                Text("Инференс llama.cpp, wake-word «NEXUS», распознавание речи и голосовое подтверждение ещё не реализованы.")
+                                Text("Добавлены импорт GGUF, нативная arm64-сборка llama.cpp и ручная загрузка/выгрузка модели.")
+                                Text("Генерация ответов, wake-word «NEXUS», распознавание речи, синтез речи и голосовое подтверждение ещё не подключены.")
                             }
                         }
                         Spacer(Modifier.height(4.dp))
