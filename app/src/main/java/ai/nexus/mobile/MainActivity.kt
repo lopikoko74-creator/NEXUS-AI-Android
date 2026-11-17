@@ -30,6 +30,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -37,13 +39,17 @@ class MainActivity : ComponentActivity() {
         val prefs = getSharedPreferences("nexus_settings", MODE_PRIVATE)
         setContent {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
+            var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
+            var modelStatus by remember { mutableStateOf("Модель ещё не импортирована в хранилище приложения") }
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
                 uri?.let {
                     contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    modelUri = it.toString()
                     modelName = contentResolver.query(it, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
                     } ?: "GGUF-модель выбрана"
                     prefs.edit().putString("model_uri", it.toString()).putString("model_name", modelName).apply()
+                    modelStatus = "Файл выбран. Следующий шаг — импорт в память приложения."
                 }
             }
             MaterialTheme {
@@ -59,7 +65,22 @@ class MainActivity : ComponentActivity() {
                                 Text("Локальная модель", style = MaterialTheme.typography.titleMedium)
                                 Text(modelName)
                                 Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Выбрать GGUF-файл") }
-                                Text("Файл выбирается через системный проводник Android. Доступ к нему сохраняется; запуск модели пока не подключён.")
+                                Text("Файл выбирается через системный проводник Android. Перед запуском модель копируется в приватное хранилище приложения и проверяется по заголовку GGUF.")
+                                Text(modelStatus)
+                                if (modelUri != null) {
+                                    OutlinedButton(onClick = {
+                                        this@MainActivity.lifecycleScope.launch {
+                                            modelStatus = "Импорт модели…"
+                                            try {
+                                                val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri))
+                                                prefs.edit().putString("model_file", imported.absolutePath).apply()
+                                                modelStatus = "Импорт завершён: ${imported.name}. Движок инференса подключается следующим этапом."
+                                            } catch (error: Exception) {
+                                                modelStatus = "Ошибка импорта: ${error.message ?: "неизвестная ошибка"}"
+                                            }
+                                        }
+                                    }) { Text("Подготовить модель") }
+                                }
                             }
                         }
                         Card(Modifier.fillMaxWidth()) {
