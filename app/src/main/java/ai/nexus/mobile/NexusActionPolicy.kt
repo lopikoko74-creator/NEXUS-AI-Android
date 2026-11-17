@@ -57,25 +57,25 @@ object NexusActionPolicy {
         ) {
             ActionDecision(false, false, "Не указан получатель или текст")
         } else {
-            ActionDecision(true, true, "Отправка сообщения — внешнее действие")
+            ActionDecision(false, true, "Отправка сообщений пока не подключена")
         }
 
         is NexusAction.MakeCall -> if (action.phoneNumber.isBlank()) {
             ActionDecision(false, false, "Не указан номер телефона")
         } else {
-            ActionDecision(true, true, "Телефонный вызов требует подтверждения")
+            ActionDecision(false, true, "Выполнение звонков пока не подключено")
         }
 
         is NexusAction.DeleteItem -> if (action.description.isBlank()) {
             ActionDecision(false, false, "Не указано, что удалить")
         } else {
-            ActionDecision(true, true, "Удаление может быть необратимым")
+            ActionDecision(false, true, "Удаление пока не подключено")
         }
 
         is NexusAction.Purchase -> if (action.description.isBlank()) {
             ActionDecision(false, false, "Не указана покупка")
         } else {
-            ActionDecision(true, true, "Покупка требует явного подтверждения")
+            ActionDecision(false, true, "Покупки пока не подключены")
         }
     }
 
