@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,7 +41,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
             var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
-            var modelStatus by remember { mutableStateOf("Модель ещё не импортирована в хранилище приложения") }
+            var modelStatus by remember {
+                val savedPath = prefs.getString("model_file", null)
+                val savedFile = savedPath?.let(::File)
+                mutableStateOf(
+                    if (savedFile?.isFile == true) "GGUF импортирован: ${savedFile.name}. Движок инференса ещё не подключён."
+                    else "Модель ещё не импортирована в хранилище приложения"
+                )
+            }
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
                 uri?.let {
                     contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
