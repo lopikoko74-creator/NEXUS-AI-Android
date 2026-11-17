@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
                                         this@MainActivity.lifecycleScope.launch {
                                             modelStatus = "Импорт модели…"
                                             try {
-                                                val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri))
+                                                val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri.orEmpty()))
                                                 prefs.edit().putString("model_file", imported.absolutePath).apply()
                                                 modelStatus = "Импорт завершён: ${imported.name}. Движок инференса подключается следующим этапом."
                                             } catch (error: Exception) {
