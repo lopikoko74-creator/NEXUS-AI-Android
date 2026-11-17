@@ -29,7 +29,7 @@ class NexusActionPolicyTest {
         )
         actions.forEach { action ->
             assertFalse(NexusActionPolicy.mayExecute(action, false))
-            assertTrue(NexusActionPolicy.mayExecute(action, true))
+            assertFalse(NexusActionPolicy.mayExecute(action, true))
         }
     }
 
