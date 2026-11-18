@@ -191,8 +191,30 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
         return nullptr;
     }
 
+    // Constrained decoding keeps the planner response inside the JSON action contract.
+    static const char *json_grammar = R"GBNF(
+root ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws action ws "," ws "\"args\"" ws ":" ws args ws "}"
+action ::= "\"OPEN_APP\"" | "\"TAP_TEXT\"" | "\"ENTER_TEXT\"" | "\"GO_BACK\"" | "\"SCROLL\"" | "\"WAIT\"" | "\"ANSWER\"" | "\"DONE\"" | "\"UNSUPPORTED\""
+args ::= app_args | tap_args | text_args | empty_args | direction_args | wait_args | reason_args
+app_args ::= "{" ws "\"app_name\"" ws ":" ws string ws "}"
+tap_args ::= "{" ws "\"label\"" ws ":" ws string ws "}"
+text_args ::= "{" ws "\"text\"" ws ":" ws string ws "}"
+empty_args ::= "{" ws "}"
+direction_args ::= "{" ws "\"direction\"" ws ":" ws ("\"FORWARD\"" | "\"BACKWARD\"") ws "}"
+wait_args ::= "{" ws "\"milliseconds\"" ws ":" ws digits ws "}"
+reason_args ::= "{" ws ("\"summary\"" | "\"reason\"") ws ":" ws string ws "}"
+digits ::= [0-9]+
+string ::= "\"" char* "\""
+char ::= [^"\\] | "\\" escape
+escape ::= ["\\/bfnrt] | "u" hex hex hex hex
+hex ::= [0-9a-fA-F]
+ws ::= [ \t\n\r]*
+)GBNF";
+
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
     llama_sampler *sampler = llama_sampler_chain_init(sampler_params);
+    llama_sampler *grammar_sampler = llama_sampler_init_grammar(vocab, json_grammar, "root");
+    if (grammar_sampler != nullptr) llama_sampler_chain_add(sampler, grammar_sampler);
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.90f, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.15f));
