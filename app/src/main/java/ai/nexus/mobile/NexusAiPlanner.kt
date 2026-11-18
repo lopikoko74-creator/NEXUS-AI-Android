@@ -21,12 +21,12 @@ sealed interface NexusPlanParseResult {
 }
 
 object NexusAiPlanner {
-    private const val MAX_FIELD_LENGTH = 512
-    private const val MAX_RAW_LENGTH = 4096
+    private const val MAX_FIELD_LENGTH = 400
+    private const val MAX_RAW_LENGTH = 2048
 
     fun buildPrompt(userRequest: String, observations: List<String> = emptyList()): String {
         val request = escapeUntrusted(userRequest.trim().take(MAX_FIELD_LENGTH))
-        val history = observations.takeLast(8).joinToString("\n") { "- " + escapeUntrusted(it.take(400)) }
+        val history = observations.takeLast(5).joinToString("\n") { "- " + escapeUntrusted(it.take(280)) }
             .ifBlank { "- No actions have been executed yet." }
         return """
 You are the local task-planning model inside NEXUS, an Android phone agent.
