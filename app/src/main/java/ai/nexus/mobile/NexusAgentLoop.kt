@@ -12,7 +12,8 @@ data class NexusPendingConfirmation internal constructor(
     val plan: NexusAiPlan,
     internal val observations: List<String>,
     internal val completedSteps: Int,
-    internal val successfulActions: Int
+    internal val successfulActions: Int,
+    internal val priorSeenActions: List<String>
 )
 
 sealed interface NexusAgentResult {
@@ -33,22 +34,23 @@ class NexusAgentLoop(
     suspend fun run(request: String, initialObservations: List<String> = emptyList()): NexusAgentResult {
         val clean = request.trim()
         if (clean.isEmpty()) return NexusAgentResult.Failed("Пустая команда", emptyList())
-        return continueLoop(clean, initialObservations.takeLast(4), 0, 0, null, false)
+        return continueLoop(clean, initialObservations.takeLast(4), 0, 0, emptyList(), null, false)
     }
 
     suspend fun resume(pending: NexusPendingConfirmation): NexusAgentResult =
-        continueLoop(pending.request, pending.observations, pending.completedSteps, pending.successfulActions, pending.plan, true)
+        continueLoop(pending.request, pending.observations, pending.completedSteps, pending.successfulActions, pending.priorSeenActions, pending.plan, true)
 
     private suspend fun continueLoop(
         request: String,
         initialObservations: List<String>,
         initialSteps: Int,
         initialSuccessfulActions: Int,
+        initialSeenActions: List<String>,
         firstPlan: NexusAiPlan?,
         firstPlanConfirmed: Boolean
     ): NexusAgentResult {
         val observations = initialObservations.toMutableList()
-        val seen = mutableSetOf<String>()
+        val seen = initialSeenActions.toMutableSet()
         var steps = initialSteps
         var successfulActions = initialSuccessfulActions
         var plan = firstPlan
@@ -104,7 +106,7 @@ class NexusAgentLoop(
             }
             if (outcome.requiresConfirmation && !confirmed) {
                 return NexusAgentResult.AwaitingConfirmation(
-                    NexusPendingConfirmation(request, activePlan, observations.toList(), steps, successfulActions),
+                    NexusPendingConfirmation(request, activePlan, observations.toList(), steps, successfulActions, seen.filter { it != signature }),
                     outcome.observation
                 )
             }
