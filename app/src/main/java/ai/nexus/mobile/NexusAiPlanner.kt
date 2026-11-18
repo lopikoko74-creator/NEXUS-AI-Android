@@ -8,6 +8,8 @@ sealed interface NexusAiPlan {
     data class TapText(val exactLabel: String) : NexusAiPlan
     data class EnterText(val text: String) : NexusAiPlan
     data object GoBack : NexusAiPlan
+    data class Scroll(val direction: String) : NexusAiPlan
+    data class Wait(val milliseconds: Int) : NexusAiPlan
     data class Answer(val text: String) : NexusAiPlan
     data class Done(val summary: String) : NexusAiPlan
     data class Unsupported(val reason: String) : NexusAiPlan
@@ -37,6 +39,8 @@ You may use only these actions:
 - TAP_TEXT with args.label: tap an exact visible UI label.
 - ENTER_TEXT with args.text: enter text into the currently focused editable field.
 - GO_BACK with empty args: navigate one screen back.
+- SCROLL with args.direction set to FORWARD or BACKWARD: scroll the current screen.
+- WAIT with args.milliseconds from 100 to 3000: wait for a screen transition, then inspect the next observation.
 - ANSWER with args.text: answer the user without a phone action.
 - DONE with args.summary: report that the goal is already achieved based on execution observations.
 - UNSUPPORTED with args.reason: stop if the goal cannot be safely achieved with available actions.
@@ -79,6 +83,12 @@ $request
                 "TAP_TEXT" -> required("label")?.let(NexusAiPlan::TapText)
                 "ENTER_TEXT" -> required("text")?.let(NexusAiPlan::EnterText)
                 "GO_BACK" -> NexusAiPlan.GoBack
+                "SCROLL" -> required("direction")?.uppercase()
+                    ?.takeIf { it == "FORWARD" || it == "BACKWARD" }
+                    ?.let(NexusAiPlan::Scroll)
+                "WAIT" -> args.optInt("milliseconds", -1)
+                    .takeIf { it in 100..3000 }
+                    ?.let(NexusAiPlan::Wait)
                 "ANSWER" -> required("text")?.let(NexusAiPlan::Answer)
                 "DONE" -> required("summary")?.let(NexusAiPlan::Done)
                 "UNSUPPORTED" -> required("reason")?.let(NexusAiPlan::Unsupported)
