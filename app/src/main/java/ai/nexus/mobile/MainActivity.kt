@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
         return NexusAgentLoop(
-            generate = { prompt -> engine.generate(prompt, 384) },
+            generate = { prompt -> engine.generate(prompt, 160) },
             execute = { plan, userConfirmed ->
                 when (plan) {
                     is NexusAiPlan.OpenApp -> when (val result = InstalledAppLauncher.launch(this, plan.appName)) {
@@ -135,8 +135,8 @@ class MainActivity : ComponentActivity() {
             val screen = NexusAccessibilityService.current?.describeActiveWindow()
                 ?: "Служба специальных возможностей не подключена; доступен только запуск приложений."
             val context = listOf(
-                "Installed launchable apps (use exact visible labels from this list): ${installedApps.joinToString(", ").take(5000)}",
-                "Initial screen: $screen"
+                "Installed launchable apps (use exact visible labels from this list): ${installedApps.joinToString(", ").take(1800)}",
+                "Initial screen: ${screen.take(1200)}"
             )
             val result = try {
                 createAgentLoop(onEvent).run(request, context)
