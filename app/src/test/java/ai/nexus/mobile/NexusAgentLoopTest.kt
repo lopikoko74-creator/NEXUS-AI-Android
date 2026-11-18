@@ -27,7 +27,7 @@ class NexusAgentLoopTest {
 
         assertTrue(result is NexusAgentResult.Completed)
         assertTrue(secondPrompt.contains("Telegram opened"))
-        assertEquals(1, generation)
+        assertEquals(2, generation)
     }
 
     @Test
