@@ -218,6 +218,8 @@ class MainActivity : ComponentActivity() {
                 mutableStateOf(if (saved?.isFile == true) "Файл подготовлен: ${saved.name}" else "GGUF-файл ещё не подготовлен")
             }
             var engineStatus by remember { mutableStateOf("Модель не загружена в оперативную память") }
+            var modelLoading by remember { mutableStateOf(false) }
+            var modelProgress by remember { mutableStateOf(0f) }
             var command by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             var listening by remember { mutableStateOf(false) }
@@ -468,33 +470,79 @@ class MainActivity : ComponentActivity() {
                                     }
                                     Text(engineStatus, style = MaterialTheme.typography.bodySmall)
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Button(onClick = {
-                                            lifecycleScope.launch {
-                                                val file = prefs.getString("model_file", null)?.let(::File)
-                                                if (file == null || !file.isFile) {
-                                                    engineStatus = "Сначала выбери GGUF и нажми «Подготовить»."
-                                                } else {
-                                                    engineStatus = "Загружаю модель в RAM…"
-                                                    try {
-                                                        val info = NativeLlamaEngine.getInstance(this@MainActivity).loadModel(file)
-                                                        engineStatus = "Загружена: $info"
-                                                    } catch (error: Throwable) {
-                                                        engineStatus = "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
+                                        Button(
+                                            enabled = !modelLoading,
+                                            onClick = {
+                                                lifecycleScope.launch {
+                                                    val file = prefs.getString("model_file", null)?.let(::File)
+                                                    if (file == null || !file.isFile) {
+                                                        engineStatus = "Сначала выбери GGUF и нажми «Подготовить»."
+                                                    } else {
+                                                        modelLoading = true
+                                                        modelProgress = 0f
+                                                        engineStatus = "Загружаю модель в RAM…"
+                                                        try {
+                                                            val info = NativeLlamaEngine.getInstance(this@MainActivity).loadModel(file) { progress ->
+                                                                modelProgress = progress
+                                                                engineStatus = "Загрузка модели: ${(progress * 100).toInt()}%"
+                                                            }
+                                                            engineStatus = "Загружена: $info"
+                                                        } catch (error: Throwable) {
+                                                            engineStatus = if (error.message?.contains("отменена", true) == true)
+                                                                "Загрузка модели отменена."
+                                                            else "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
+                                                        } finally {
+                                                            modelLoading = false
+                                                        }
                                                     }
                                                 }
                                             }
-                                        }) { Text("Загрузить модель") }
+                                        ) { Text(if (modelLoading) "Загрузка…" else "Загрузить модель") }
                                         OutlinedButton(onClick = {
                                             lifecycleScope.launch {
                                                 try {
-                                                    NativeLlamaEngine.getInstance(this@MainActivity).unloadModel()
-                                                    engineStatus = "Модель выгружена из RAM."
+                                                    NativeLlamaEngine.getInstance(this@MainActivity).cancelAndUnload()
+                                                    engineStatus = "Модель выгружена. Оперативная память освобождена."
+                                                    modelLoading = false
+                                                    busy = false
                                                 } catch (error: Exception) {
                                                     engineStatus = "Ошибка выгрузки: ${error.message}"
                                                 }
                                             }
                                         }) { Text("Выгрузить") }
                                     }
+                                    if (modelLoading) {
+                                        Text("Загрузка GGUF: ${(modelProgress * 100).toInt()}%")
+                                        OutlinedButton(onClick = {
+                                            lifecycleScope.launch {
+                                                engineStatus = "Останавливаю загрузку…"
+                                                try {
+                                                    NativeLlamaEngine.getInstance(this@MainActivity).cancelAndUnload()
+                                                    engineStatus = "Загрузка экстренно остановлена."
+                                                } catch (error: Exception) {
+                                                    engineStatus = "Ошибка остановки: ${error.message}"
+                                                } finally {
+                                                    modelLoading = false
+                                                    busy = false
+                                                }
+                                            }
+                                        }) { Text("Экстренно остановить загрузку") }
+                                    }
+                                    OutlinedButton(onClick = {
+                                        busy = false
+                                        pendingConfirmation = null
+                                        lifecycleScope.launch {
+                                            engineStatus = "Экстренно выключаю модель…"
+                                            try {
+                                                NativeLlamaEngine.getInstance(this@MainActivity).cancelAndUnload()
+                                                engineStatus = "NEXUS остановлен. Модель выгружена из RAM."
+                                            } catch (error: Exception) {
+                                                engineStatus = "Ошибка аварийной остановки: ${error.message}"
+                                            } finally {
+                                                modelLoading = false
+                                            }
+                                        }
+                                    }) { Text("ЭКСТРЕННО ВЫКЛЮЧИТЬ NEXUS") }
                                     OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                         Text("Настройки специальных возможностей")
                                     }
