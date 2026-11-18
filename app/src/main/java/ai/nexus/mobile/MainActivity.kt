@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
@@ -42,6 +43,8 @@ class MainActivity : ComponentActivity() {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
             var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
             var engineStatus by remember { mutableStateOf("Нативный движок ещё не запускался") }
+            var appCommand by remember { mutableStateOf("") }
+            var appCommandStatus by remember { mutableStateOf("Команды открытия приложений пока принимаются текстом") }
             var modelStatus by remember {
                 val savedPath = prefs.getString("model_file", null)
                 val savedFile = savedPath?.let(::File)
@@ -69,6 +72,35 @@ class MainActivity : ComponentActivity() {
                     ) {
                         Text("NEXUS AI", style = MaterialTheme.typography.headlineLarge)
                         Text("Локальный помощник для Android")
+                        Card(Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("Команды приложений", style = MaterialTheme.typography.titleMedium)
+                                Text("Пока голосовое распознавание не подключено, здесь можно проверить разбор команд. Например: «Открой телегу», «Запусти ватсап», «Перейди в ютуб».")
+                                OutlinedTextField(
+                                    value = appCommand,
+                                    onValueChange = { appCommand = it },
+                                    label = { Text("Команда NEXUS") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true
+                                )
+                                Button(onClick = {
+                                    val parsed = AppCommandParser.parse(appCommand)
+                                    if (parsed == null) {
+                                        appCommandStatus = "Команда не распознана. Используй «Открой [название приложения]»."
+                                    } else {
+                                        when (val result = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
+                                            is InstalledAppLauncher.Result.Launched ->
+                                                appCommandStatus = "Запускаю: ${result.appLabel}"
+                                            is InstalledAppLauncher.Result.NotFound ->
+                                                appCommandStatus = "Приложение не найдено среди установленных: ${result.requestedName}"
+                                            is InstalledAppLauncher.Result.Failed ->
+                                                appCommandStatus = "Не удалось запустить: ${result.reason}"
+                                        }
+                                    }
+                                }, modifier = Modifier.fillMaxWidth()) { Text("Выполнить команду") }
+                                Text(appCommandStatus)
+                            }
+                        }
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Локальная модель", style = MaterialTheme.typography.titleMedium)
