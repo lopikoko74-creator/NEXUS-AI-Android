@@ -217,13 +217,15 @@ ws ::= [ \t\n\r]*
         throw_java(env, "java/lang/IllegalStateException", "Could not create sampler chain");
         return nullptr;
     }
+    // Grammar support varies between llama.cpp builds and model vocabularies.
+    // A grammar initialization failure must not abort inference: the Kotlin planner
+    // independently parses and validates every generated action before execution.
     llama_sampler *grammar_sampler = llama_sampler_init_grammar(vocab, json_grammar, "root");
-    if (grammar_sampler == nullptr) {
-        llama_sampler_free(sampler);
-        throw_java(env, "java/lang/IllegalStateException", "Could not initialize the JSON action grammar");
-        return nullptr;
+    if (grammar_sampler != nullptr) {
+        llama_sampler_chain_add(sampler, grammar_sampler);
+    } else {
+        LOGE("JSON action grammar unavailable; using parser-validated fallback decoding");
     }
-    llama_sampler_chain_add(sampler, grammar_sampler);
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.90f, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.15f));
