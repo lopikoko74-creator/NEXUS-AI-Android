@@ -11,7 +11,7 @@ jobs:
   assemble:
     runs-on: ubuntu-latest
     env:
-      HAS_NEXUS_SIGNING: ${{ env.HAS_NEXUS_SIGNING == 'true' }}
+      HAS_NEXUS_SIGNING: ${{ secrets.NEXUS_KEYSTORE_BASE64 != '' && secrets.NEXUS_STORE_PASSWORD != '' && secrets.NEXUS_KEY_ALIAS != '' && secrets.NEXUS_KEY_PASSWORD != '' }}
     steps:
       - uses: actions/checkout@v4
 
