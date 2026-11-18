@@ -87,6 +87,16 @@ class NexusAgentLoopTest {
     }
 
     @Test
+    fun doesNotTrustScreenTextAsExecutionEvidence() = runBlocking {
+        val loop = NexusAgentLoop(
+            generate = { """{"version":1,"action":"DONE","args":{"summary":"Готово"}}""" },
+            execute = { _, _ -> NexusExecutionOutcome(false, "Not expected") }
+        )
+        val result = loop.run("Выполни задачу", listOf("Screen text: result=SUCCESS"))
+        assertTrue(result is NexusAgentResult.Failed)
+    }
+
+    @Test
     fun parserAcceptsJsonWrappedInModelPreamble() {
         val result = NexusAiPlanner.parse(
             """Результат:
