@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
                         NexusExecutionOutcome(false, "Terminal model response is handled by the agent loop.")
                 }
             },
-            maxSteps = 6
+            maxSteps = 10
         )
     }
 
