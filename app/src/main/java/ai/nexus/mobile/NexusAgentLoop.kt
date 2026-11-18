@@ -11,7 +11,8 @@ data class NexusPendingConfirmation internal constructor(
     val request: String,
     val plan: NexusAiPlan,
     internal val observations: List<String>,
-    internal val completedSteps: Int
+    internal val completedSteps: Int,
+    internal val successfulActions: Int
 )
 
 sealed interface NexusAgentResult {
@@ -32,22 +33,24 @@ class NexusAgentLoop(
     suspend fun run(request: String, initialObservations: List<String> = emptyList()): NexusAgentResult {
         val clean = request.trim()
         if (clean.isEmpty()) return NexusAgentResult.Failed("Пустая команда", emptyList())
-        return continueLoop(clean, initialObservations.takeLast(4), 0, null, false)
+        return continueLoop(clean, initialObservations.takeLast(4), 0, 0, null, false)
     }
 
     suspend fun resume(pending: NexusPendingConfirmation): NexusAgentResult =
-        continueLoop(pending.request, pending.observations, pending.completedSteps, pending.plan, true)
+        continueLoop(pending.request, pending.observations, pending.completedSteps, pending.successfulActions, pending.plan, true)
 
     private suspend fun continueLoop(
         request: String,
         initialObservations: List<String>,
         initialSteps: Int,
+        initialSuccessfulActions: Int,
         firstPlan: NexusAiPlan?,
         firstPlanConfirmed: Boolean
     ): NexusAgentResult {
         val observations = initialObservations.toMutableList()
         val seen = mutableSetOf<String>()
         var steps = initialSteps
+        var successfulActions = initialSuccessfulActions
         var plan = firstPlan
         var confirmed = firstPlanConfirmed
         var parseRetries = 0
@@ -80,7 +83,7 @@ class NexusAgentLoop(
             when (activePlan) {
                 is NexusAiPlan.Answer -> return NexusAgentResult.Completed(activePlan.text, steps, observations)
                 is NexusAiPlan.Done -> {
-                    if (observations.none { it.contains("result=SUCCESS") && !it.contains("/ Wait /") }) {
+                    if (successfulActions == 0) {
                         return NexusAgentResult.Failed("Модель заявила о завершении без подтверждённого успешного действия", observations)
                     }
                     return NexusAgentResult.Completed(activePlan.summary, steps, observations)
@@ -101,13 +104,14 @@ class NexusAgentLoop(
             }
             if (outcome.requiresConfirmation && !confirmed) {
                 return NexusAgentResult.AwaitingConfirmation(
-                    NexusPendingConfirmation(request, activePlan, observations.toList(), steps),
+                    NexusPendingConfirmation(request, activePlan, observations.toList(), steps, successfulActions),
                     outcome.observation
                 )
             }
 
             steps++
             val evidence = if (outcome.success) "SUCCESS" else "FAILED"
+            if (outcome.success && activePlan !is NexusAiPlan.Wait) successfulActions++
             observations += "Step $steps / ${activePlan.javaClass.simpleName} / result=$evidence: ${outcome.observation.take(400)}"
             if (outcome.success && outcome.taskCompleted) {
                 return NexusAgentResult.Completed(outcome.observation, steps, observations)
