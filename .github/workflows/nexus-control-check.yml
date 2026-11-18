@@ -16,7 +16,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m py_compile nexus-control/agent/nexus_agent.py
+      - run: python -m py_compile nexus-control/agent/nexus_agent.py nexus-control/install/windows/install-core.py
+      - run: bash -n nexus-control/START-NEXUS.sh nexus-control/install/linux/install.sh nexus-control/install/usb/connect-android.sh
+      - run: test -f nexus-control/START-NEXUS.bat && test -f nexus-control/install/windows/one-click.ps1
       - run: PYTHONPATH=nexus-control/agent python -m unittest discover -s nexus-control/agent/tests -v
       - name: Package PC dashboard
         run: zip -r NEXUS-CONTROL-PC.zip nexus-control
