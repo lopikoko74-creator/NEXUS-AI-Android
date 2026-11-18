@@ -77,3 +77,22 @@ Inference runs on-device. No cloud inference endpoint is configured or required.
 ## NEXUS CONTROL — PC dashboard
 
 A separate cross-platform PC dashboard project is available in [`nexus-control/`](nexus-control/README.md). It provides a local Windows 10 / Ubuntu agent, authenticated system telemetry, confirmed power controls, and an Android USB connection using ADB reverse. The GRUB dual-boot menu is supplied as a hardware-specific template and must be adapted to the PC's EFI layout before installation.
+
+
+## Обновление NEXUS AI из приложения
+
+В настройках главного экрана доступна кнопка **«Обновить NEXUS»**. Она обращается к GitHub Releases этого репозитория, загружает APK последнего стабильного релиза и его файл `.sha256`, проверяет контрольную сумму, package name, versionCode и сертификат подписи относительно установленного приложения. После успешной проверки APK передаётся системному установщику Android. Финальное подтверждение установки выполняется в Android; данные приложения при штатном обновлении сохраняются.
+
+### Публикация релиза
+
+Workflow `.github/workflows/publish-release.yml` запускается при push тега вида `v0.5.0`. Он выполняет unit-тесты, собирает подписанный release APK и публикует APK вместе с SHA-256 в GitHub Releases.
+
+Перед первой публикацией владелец репозитория должен добавить в **Settings → Secrets and variables → Actions** четыре secrets:
+- `NEXUS_KEYSTORE_BASE64` — содержимое постоянного keystore в Base64;
+- `NEXUS_STORE_PASSWORD`;
+- `NEXUS_KEY_ALIAS`;
+- `NEXUS_KEY_PASSWORD`.
+
+Используй тот же keystore, которым подписана установленная версия. Не создавай новый ключ для каждого релиза и не загружай keystore или пароли в репозиторий/чат. Если исходного ключа установленной версии нет, обновление поверх неё может быть невозможно из-за проверки подписи Android.
+
+Перед созданием тега обнови `versionCode` (строго больше предыдущего) и `versionName` в `app/build.gradle.kts`, затем создай и отправь тег, например: `git tag v0.5.0 && git push origin v0.5.0`. Тег и versionName должны соответствовать друг другу. Пока secrets не настроены, публикация релиза намеренно не состоится.
