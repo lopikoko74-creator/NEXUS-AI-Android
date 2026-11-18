@@ -307,7 +307,9 @@ ws ::= [ \t\n\r]*
         }
 
         if (position >= 2047) break;
-        batch = llama_batch_ext_init(g_context);
+        // Allocate a fresh single-token batch for the next decode step.
+        // The prompt-prefill batch is scoped to its chunk loop above.
+        llama_batch_ext *batch = llama_batch_ext_init(g_context);
         if (batch == nullptr) break;
         const int32_t index = llama_batch_ext_add_token(batch, 0, token);
         const llama_pos pos = position;
