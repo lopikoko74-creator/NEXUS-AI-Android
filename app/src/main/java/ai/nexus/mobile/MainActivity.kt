@@ -192,6 +192,7 @@ class MainActivity : ComponentActivity() {
             var listening by remember { mutableStateOf(false) }
             var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
+            var showUpdateSettings by remember { mutableStateOf(false) }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var chatLines by remember {
                 mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
@@ -369,10 +370,18 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = { showModelSettings = !showModelSettings }) {
                                     Text(if (showModelSettings) "Скрыть настройки" else "Модель и доступ")
                                 }
+                                TextButton(onClick = { showUpdateSettings = !showUpdateSettings }) {
+                                    Text(if (showUpdateSettings) "Скрыть обновление" else "Обновить NEXUS")
+                                }
                             }
                         }
 
                         NexusVoiceOrb(active = listening || busy)
+
+                        if (showUpdateSettings) {
+                            NexusUpdatePanel()
+                            Spacer(Modifier.height(6.dp))
+                        }
 
                         if (showModelSettings) {
                             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
