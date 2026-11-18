@@ -16,6 +16,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.runtime.DisposableEffect
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
@@ -360,6 +372,8 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
+                        NexusVoiceOrb(active = listening || busy)
+
                         if (showModelSettings) {
                             Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
                                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -554,6 +568,95 @@ private fun NexusChatBubble(line: ChatLine) {
                     )
                 }
             }
+        }
+    }
+}
+
+
+@androidx.compose.runtime.Composable
+private fun NexusVoiceOrb(active: Boolean) {
+    if (!active) return
+    val transition = rememberInfiniteTransition(label = "nexus-voice-orb")
+    val pulse by transition.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1050),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "orb-pulse"
+    )
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2f * PI).toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "orb-wave"
+    )
+
+    Canvas(Modifier.fillMaxWidth().height(104.dp)) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = 29.dp.toPx()
+        val glowRadius = radius * pulse * 1.85f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(
+                    androidx.compose.ui.graphics.Color(0x6657D7FF),
+                    androidx.compose.ui.graphics.Color(0x332D8BFF),
+                    androidx.compose.ui.graphics.Color.Transparent
+                ),
+                center = center,
+                radius = glowRadius
+            ),
+            radius = glowRadius,
+            center = center
+        )
+        drawCircle(
+            color = androidx.compose.ui.graphics.Color(0x9957D7FF),
+            radius = radius * pulse * 1.28f,
+            center = center,
+            style = Stroke(width = 1.5.dp.toPx())
+        )
+        drawCircle(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    androidx.compose.ui.graphics.Color(0xFF63E6FF),
+                    androidx.compose.ui.graphics.Color(0xFF657BFF),
+                    androidx.compose.ui.graphics.Color(0xFFB56CFF)
+                ),
+                start = Offset(center.x - radius, center.y - radius),
+                end = Offset(center.x + radius, center.y + radius)
+            ),
+            radius = radius * pulse,
+            center = center
+        )
+        drawCircle(
+            color = androidx.compose.ui.graphics.Color(0x99FFFFFF),
+            radius = radius * 0.52f,
+            center = Offset(center.x - radius * 0.20f, center.y - radius * 0.22f)
+        )
+
+        val barCount = 31
+        val barWidth = 2.2.dp.toPx()
+        val maxHeight = 13.dp.toPx()
+        val baseY = center.y + radius + 14.dp.toPx()
+        for (i in 0 until barCount) {
+            val normalized = i.toFloat() / (barCount - 1)
+            val envelope = sin(normalized * PI).toFloat()
+            val oscillation = (0.25f + 0.75f * kotlin.math.abs(
+                sin(phase + i * 0.48f)
+            ))
+            val barHeight = (3.dp.toPx() + maxHeight * envelope * oscillation).coerceAtLeast(2.dp.toPx())
+            val x = center.x - (barCount - 1) * barWidth * 1.45f / 2f + i * barWidth * 1.45f
+            drawLine(
+                color = androidx.compose.ui.graphics.Color(0xFF83DFFF).copy(alpha = 0.45f + 0.5f * envelope),
+                start = Offset(x, baseY - barHeight / 2f),
+                end = Offset(x, baseY + barHeight / 2f),
+                strokeWidth = barWidth,
+                cap = StrokeCap.Round
+            )
         }
     }
 }
