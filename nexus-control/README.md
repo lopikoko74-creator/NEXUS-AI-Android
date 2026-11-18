@@ -24,23 +24,19 @@ The agent binds ONLY to 127.0.0.1, not the LAN or internet. The phone reaches it
 
 Power actions are allowlisted and confirmed in the UI. Input endpoints accept only specific mouse/keyboard operations; arbitrary shell execution is not exposed. Keep USB debugging authorized only on devices you trust.
 
+## One-click installation (recommended)
+
+Download the `NEXUS-CONTROL-PC` artifact and extract it. On Windows, double-click `nexus-control/START-NEXUS.bat`. On Ubuntu, run `bash nexus-control/START-NEXUS.sh`. The bootstrap installs missing host prerequisites where possible, installs and starts the agent, installs/locates ADB platform-tools, waits for the first USB authorization, creates a QR code containing the local dashboard URL and access token, and opens the QR image on the PC. Scan it with the phone camera to open and authenticate the dashboard without manually copying the token.
+
+**One unavoidable first-time phone action:** enable Developer options → USB debugging and approve the computer's RSA authorization prompt on the phone. Android intentionally requires this physical confirmation. Keep the phone unlocked during the first connection.
+
 ## Install on Ubuntu
 
-1. Install Python 3, venv support and Android platform-tools (adb).
-2. From repository root run `bash nexus-control/install/linux/install.sh`.
-3. Enable USB debugging on Android and authorize the PC.
-4. Connect the phone and run `bash nexus-control/install/usb/connect-android.sh`.
-5. Read the token with `cat ~/.nexus-control-token`.
-6. Open `http://127.0.0.1:8765` in the phone browser and enter the token.
+Run `bash nexus-control/START-NEXUS.sh` and follow the single Android USB authorization prompt.
 
 ## Install on Windows 10
 
-1. Install Python 3 and Google's Android platform-tools (adb).
-2. Run PowerShell as the logged-in user: `powershell -ExecutionPolicy Bypass -File nexus-control/install/windows/install.ps1`.
-3. Enable Android USB debugging and authorize the PC.
-4. Run `powershell -ExecutionPolicy Bypass -File nexus-control/install/usb/connect-android.ps1`.
-5. Read the token from `%USERPROFILE%\.nexus-control-token`.
-6. Open `http://127.0.0.1:8765` in the phone browser and enter the token.
+Double-click `nexus-control/START-NEXUS.bat`. It installs Python/ADB if possible, registers the background agent, sets up the USB tunnel and displays the login QR.
 
 ## Boot selection
 

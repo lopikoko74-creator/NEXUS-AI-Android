@@ -22,7 +22,7 @@
 <div class="foot">NEXUS CONTROL Agent · локальное соединение через ADB reverse · обновление каждые 3 секунды</div>
 </section></main>
 <script>
-const $=id=>document.getElementById(id);let auth=localStorage.getItem('nexus_token')||'';
+const $=id=>document.getElementById(id);let auth=localStorage.getItem('nexus_token')||'';const qrToken=new URLSearchParams(location.hash.slice(1)).get('token');if(qrToken){auth=qrToken;localStorage.setItem('nexus_token',auth);history.replaceState(null,'',location.pathname);}
 function saveToken(){auth=$('token').value.trim();if(auth){localStorage.setItem('nexus_token',auth);$('login').classList.add('hidden');$('panel').classList.remove('hidden');refresh()}}
 async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{'Authorization':'Bearer '+auth,'Content-Type':'application/json',...(opts.headers||{})}});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j}
 function fmt(n){if(n==null)return '—';return (n/1073741824).toFixed(1)+' ГБ'}
