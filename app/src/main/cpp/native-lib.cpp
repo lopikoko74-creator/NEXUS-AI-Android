@@ -101,7 +101,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     }
     const char *prompt_chars = env->GetStringUTFChars(jprompt, nullptr);
     if (prompt_chars == nullptr) return nullptr;
-    const std::string prompt(prompt_chars);
+    std::string prompt(prompt_chars);
     env->ReleaseStringUTFChars(jprompt, prompt_chars);
 
     if (prompt.empty() || prompt.size() > 24000) {
@@ -113,6 +113,32 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_model == nullptr || g_context == nullptr) {
         throw_java(env, "java/lang/IllegalStateException", "Load a GGUF model before generation");
+        return nullptr;
+    }
+
+    // Use the GGUF's own chat template when available (ChatML, Llama, Gemma, etc.).
+    // Fall back to the raw instruction prompt for models without template metadata.
+    const char *chat_template = llama_model_chat_template(g_model, nullptr);
+    if (chat_template != nullptr) {
+        llama_chat_message message = {"user", prompt.c_str()};
+        std::vector<char> formatted(48000);
+        int32_t formatted_size = llama_chat_apply_template(
+            chat_template, &message, 1, true, formatted.data(),
+            static_cast<int32_t>(formatted.size())
+        );
+        if (formatted_size > 0) {
+            if (static_cast<size_t>(formatted_size) >= formatted.size()) {
+                formatted.resize(static_cast<size_t>(formatted_size) + 1);
+                formatted_size = llama_chat_apply_template(
+                    chat_template, &message, 1, true, formatted.data(),
+                    static_cast<int32_t>(formatted.size())
+                );
+            }
+            if (formatted_size > 0) prompt.assign(formatted.data(), static_cast<size_t>(formatted_size));
+        }
+    }
+    if (prompt.size() > 48000) {
+        throw_java(env, "java/lang/IllegalArgumentException", "Formatted prompt is too large");
         return nullptr;
     }
 
