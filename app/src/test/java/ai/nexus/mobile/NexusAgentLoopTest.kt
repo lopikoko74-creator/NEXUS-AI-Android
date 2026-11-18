@@ -69,6 +69,24 @@ class NexusAgentLoopTest {
     }
 
     @Test
+    fun retriesMalformedPlannerOutputBeforeStopping() = runBlocking {
+        var generation = 0
+        val loop = NexusAgentLoop(
+            generate = {
+                generation++
+                if (generation == 1) "not-json"
+                else """{"version":1,"action":"ANSWER","args":{"text":"Исправлено"}}"""
+            },
+            execute = { _, _ -> NexusExecutionOutcome(false, "Not expected") }
+        )
+
+        val result = loop.run("Ответь")
+
+        assertTrue(result is NexusAgentResult.Completed)
+        assertEquals(2, generation)
+    }
+
+    @Test
     fun parserAcceptsJsonWrappedInModelPreamble() {
         val result = NexusAiPlanner.parse(
             """Результат:
