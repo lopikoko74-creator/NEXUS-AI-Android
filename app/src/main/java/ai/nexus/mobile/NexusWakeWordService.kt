@@ -29,6 +29,7 @@ class NexusWakeWordService : Service() {
     private var listening = false
     private var restartScheduled = false
     private var consecutiveErrors = 0
+    private var finalResultPending = false
 
     override fun onCreate() {
         super.onCreate()
@@ -91,10 +92,17 @@ class NexusWakeWordService : Service() {
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() {
             listening = false
+            finalResultPending = true
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE", "onEndOfSpeech: ожидание финального результата")
             broadcastStatus("Обрабатываю речь…")
+            handler.removeCallbacks(finalResultWatchdog)
+            handler.postDelayed(finalResultWatchdog, FINAL_RESULT_TIMEOUT_MS)
         }
         override fun onError(error: Int) {
             if (stopped) return
+            handler.removeCallbacks(finalResultWatchdog)
+            finalResultPending = false
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_ERROR", "SpeechRecognizer onError code=$error")
             listening = false
             if (waitingForCommand && error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
                 waitingForCommand = false
@@ -122,10 +130,13 @@ class NexusWakeWordService : Service() {
         }
         override fun onResults(results: android.os.Bundle?) {
             if (stopped) return
+            handler.removeCallbacks(finalResultWatchdog)
+            finalResultPending = false
             listening = false
             consecutiveErrors = 0
             val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()?.trim().orEmpty()
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_RESULT", "Финальный результат: ${phrase.ifBlank { "<пусто>" }}")
             val normalized = phrase.lowercase(Locale.forLanguageTag("ru-RU"))
                 .replace("ё", "е").replace(Regex("[^\\p{L}\\p{N} ]"), " ")
                 .trim()
@@ -156,8 +167,22 @@ class NexusWakeWordService : Service() {
             // from a second callback or while the previous session is active.
             scheduleRestart(900L)
         }
-        override fun onPartialResults(partialResults: android.os.Bundle?) = Unit
+        override fun onPartialResults(partialResults: android.os.Bundle?) {
+            val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+            if (partial.isNotBlank()) NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_PARTIAL", partial)
+        }
         override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
+    }
+
+    private val finalResultWatchdog = Runnable {
+        if (!stopped && finalResultPending) {
+            finalResultPending = false
+            NexusDiagnostics.record(this, "VOICE_ERROR", "Тайм-аут: onEndOfSpeech не получил onResults/onError за ${FINAL_RESULT_TIMEOUT_MS} мс; перезапускаю распознаватель")
+            broadcastStatus("Распознаватель завис после окончания речи. Перезапускаю голосовой модуль.")
+            consecutiveErrors++
+            createRecognizer()
+            scheduleRestart(backoffDelay())
+        }
     }
 
     private val commandTimeout = Runnable {
@@ -165,7 +190,9 @@ class NexusWakeWordService : Service() {
             waitingForCommand = false
             updateNotification("Ожидаю слово «NEXUS»")
             broadcastStatus("Окно команды закрыто. Снова ожидаю «NEXUS».")
-            try { recognizer?.cancel() } catch (_: Exception) {}
+            handler.removeCallbacks(finalResultWatchdog)
+        finalResultPending = false
+        try { recognizer?.cancel() } catch (_: Exception) {}
             listening = false
             scheduleRestart(900L)
         }
@@ -205,6 +232,7 @@ class NexusWakeWordService : Service() {
         }
         try {
             listening = true
+            NexusDiagnostics.record(this, "VOICE", "startListening: ожидание ${if (waitingForCommand) "команды" else "ключевого слова"}")
             current.startListening(intent)
         } catch (error: Exception) {
             listening = false
@@ -272,5 +300,6 @@ class NexusWakeWordService : Service() {
         private const val CHANNEL_ID = "nexus_wake_word"
         private const val NOTIFICATION_ID = 4201
         private const val COMMAND_WINDOW_MS = 10_000L
+        private const val FINAL_RESULT_TIMEOUT_MS = 8_000L
     }
 }
