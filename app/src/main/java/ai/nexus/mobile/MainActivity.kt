@@ -315,9 +315,10 @@ class MainActivity : ComponentActivity() {
                                 val spoken = intent.getStringExtra(NexusWakeWordService.EXTRA_COMMAND).orEmpty()
                                 if (spoken.isNotBlank()) submitRequest(spoken)
                             }
-                            NexusWakeWordService.ACTION_STATUS ->
+                            NexusWakeWordService.ACTION_STATUS -> {
                                 voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()
                                 NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
+                            }
                         }
                     }
                 }
