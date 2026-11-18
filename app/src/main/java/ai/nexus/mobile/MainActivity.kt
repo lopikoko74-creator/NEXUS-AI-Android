@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -410,7 +409,7 @@ class MainActivity : ComponentActivity() {
 private fun NexusChatBubble(line: ChatLine) {
     val isUser = line.role == ChatRole.USER
     val isActivity = line.role == ChatRole.ACTIVITY
-    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    val alignment = if (isUser) Alignment.End else Alignment.Start
     val container = when {
         isUser -> MaterialTheme.colorScheme.primaryContainer
         isActivity -> MaterialTheme.colorScheme.surfaceContainerLow
