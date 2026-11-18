@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,6 +38,54 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    private fun createAgentLoop(): NexusAgentLoop {
+        val engine = NativeLlamaEngine.getInstance(this)
+        return NexusAgentLoop(
+            generate = { prompt -> engine.generate(prompt, 384) },
+            execute = { plan, userConfirmed ->
+                when (plan) {
+                    is NexusAiPlan.OpenApp -> when (val result = InstalledAppLauncher.launch(this, plan.appName)) {
+                        is InstalledAppLauncher.Result.Launched ->
+                            NexusExecutionOutcome(true, "Opened installed app: ${result.appLabel}. Current screen: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."}")
+                        is InstalledAppLauncher.Result.NotFound ->
+                            NexusExecutionOutcome(false, "App is not installed or was not found: ${result.requestedName}")
+                        is InstalledAppLauncher.Result.Failed ->
+                            NexusExecutionOutcome(false, "Could not open app: ${result.reason}")
+                    }
+                    is NexusAiPlan.TapText -> {
+                        val service = NexusAccessibilityService.current
+                        if (!userConfirmed) NexusExecutionOutcome(false, "NEXUS wants to tap the exact visible label '${plan.exactLabel}'.", requiresConfirmation = true)
+                        else if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        else {
+                            val ok = service.executeApprovedAction(NexusAction.TapVisibleText(plan.exactLabel), true)
+                            NexusExecutionOutcome(ok, if (ok) "Tapped '${plan.exactLabel}'. Screen: ${service.describeActiveWindow()}" else "Could not tap exact visible label '${plan.exactLabel}'. Screen: ${service.describeActiveWindow()}")
+                        }
+                    }
+                    is NexusAiPlan.EnterText -> {
+                        val service = NexusAccessibilityService.current
+                        if (!userConfirmed) NexusExecutionOutcome(false, "NEXUS wants to enter text into the currently focused field.", requiresConfirmation = true)
+                        else if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        else {
+                            val ok = service.executeApprovedAction(NexusAction.EnterText(plan.text), true)
+                            NexusExecutionOutcome(ok, if (ok) "Text entered. Screen: ${service.describeActiveWindow()}" else "Text entry failed. Screen: ${service.describeActiveWindow()}")
+                        }
+                    }
+                    NexusAiPlan.GoBack -> {
+                        val service = NexusAccessibilityService.current
+                        if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        else {
+                            val ok = service.executeApprovedAction(NexusAction.GoBack, true)
+                            NexusExecutionOutcome(ok, if (ok) "Navigated back. Screen: ${service.describeActiveWindow()}" else "Android back action failed.")
+                        }
+                    }
+                    is NexusAiPlan.Answer, is NexusAiPlan.Done, is NexusAiPlan.Unsupported ->
+                        NexusExecutionOutcome(false, "Terminal model response is handled by the agent loop.")
+                }
+            },
+            maxSteps = 6
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("nexus_settings", MODE_PRIVATE)
@@ -45,6 +95,7 @@ class MainActivity : ComponentActivity() {
             var engineStatus by remember { mutableStateOf("Нативный движок ещё не запускался") }
             var appCommand by remember { mutableStateOf("") }
             var appCommandStatus by remember { mutableStateOf("Команды открытия приложений пока принимаются текстом") }
+            var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var modelStatus by remember {
                 val savedPath = prefs.getString("model_file", null)
                 val savedFile = savedPath?.let(::File)
@@ -70,6 +121,36 @@ class MainActivity : ComponentActivity() {
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
+                        pendingConfirmation?.let { pending ->
+                            AlertDialog(
+                                onDismissRequest = { pendingConfirmation = null },
+                                title = { Text("Подтвердить действие NEXUS?") },
+                                text = { Text("Модель предлагает: ${pending.plan}. Это действие будет выполнено только после твоего подтверждения.") },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        pendingConfirmation = null
+                                        appCommandStatus = "Выполняю подтверждённый шаг и проверяю результат…"
+                                        this@MainActivity.lifecycleScope.launch {
+                                            when (val result = createAgentLoop().resume(pending)) {
+                                                is NexusAgentResult.Completed -> appCommandStatus = result.summary
+                                                is NexusAgentResult.Unsupported -> appCommandStatus = "Задача остановлена: ${result.reason}"
+                                                is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
+                                                is NexusAgentResult.AwaitingConfirmation -> {
+                                                    pendingConfirmation = result.pending
+                                                    appCommandStatus = result.explanation
+                                                }
+                                            }
+                                        }
+                                    }) { Text("Подтвердить") }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = {
+                                        pendingConfirmation = null
+                                        appCommandStatus = "Действие отменено пользователем."
+                                    }) { Text("Отмена") }
+                                }
+                            )
+                        }
                         Text("NEXUS AI", style = MaterialTheme.typography.headlineLarge)
                         Text("Локальный помощник для Android")
                         Card(Modifier.fillMaxWidth()) {
@@ -86,7 +167,23 @@ class MainActivity : ComponentActivity() {
                                 Button(onClick = {
                                     val parsed = AppCommandParser.parse(appCommand)
                                     if (parsed == null) {
-                                        appCommandStatus = "Команда не распознана. Используй «Открой [название приложения]»."
+                                        val engine = NativeLlamaEngine.getInstance(this@MainActivity)
+                                        if (!engine.isModelLoaded()) {
+                                            appCommandStatus = "Команда неизвестна. Для разбора через локальную ИИ-модель сначала загрузи GGUF."
+                                        } else {
+                                            appCommandStatus = "NEXUS передаёт неизвестную команду локальной модели…"
+                                            this@MainActivity.lifecycleScope.launch {
+                                                when (val result = createAgentLoop().run(appCommand)) {
+                                                    is NexusAgentResult.Completed -> appCommandStatus = result.summary
+                                                    is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${result.reason}"
+                                                    is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
+                                                    is NexusAgentResult.AwaitingConfirmation -> {
+                                                        pendingConfirmation = result.pending
+                                                        appCommandStatus = result.explanation
+                                                    }
+                                                }
+                                            }
+                                        }
                                     } else {
                                         when (val result = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
                                             is InstalledAppLauncher.Result.Launched ->
