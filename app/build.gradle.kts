@@ -3,16 +3,32 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+val nexusKeystoreBase64 = System.getenv("NEXUS_KEYSTORE_BASE64")
+val nexusStorePassword = System.getenv("NEXUS_STORE_PASSWORD")
+val nexusKeyAlias = System.getenv("NEXUS_KEY_ALIAS")
+val nexusKeyPassword = System.getenv("NEXUS_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    nexusKeystoreBase64, nexusStorePassword, nexusKeyAlias, nexusKeyPassword
+).all { !it.isNullOrBlank() }
+
+val nexusKeystoreFile = layout.buildDirectory.file("signing/nexus-release.jks").get().asFile
+if (hasReleaseSigning) {
+    nexusKeystoreFile.parentFile.mkdirs()
+    nexusKeystoreFile.writeBytes(java.util.Base64.getDecoder().decode(nexusKeystoreBase64))
+}
+
 android {
     namespace = "ai.nexus.mobile"
     compileSdk = 36
     ndkVersion = "27.2.12479018"
+
     defaultConfig {
         applicationId = "ai.nexus.mobile"
         minSdk = 29
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.3.0"
+        versionCode = 4
+        versionName = "0.4.0"
         ndk { abiFilters += listOf("arm64-v8a") }
         externalNativeBuild {
             cmake {
@@ -21,6 +37,30 @@ android {
             }
         }
     }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("nexusRelease") {
+                storeFile = nexusKeystoreFile
+                storePassword = nexusStorePassword
+                keyAlias = nexusKeyAlias
+                keyPassword = nexusKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("nexusRelease")
+        }
+        getByName("release") {
+            isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("nexusRelease")
+            }
+        }
+    }
+
     buildFeatures { compose = true }
     externalNativeBuild {
         cmake {
@@ -34,6 +74,7 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 }
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
