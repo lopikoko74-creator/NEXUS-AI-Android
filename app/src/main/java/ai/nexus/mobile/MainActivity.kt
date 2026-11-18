@@ -1,6 +1,9 @@
 package ai.nexus.mobile
 
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import android.content.IntentFilter
 import android.Manifest
 import android.content.pm.PackageManager
@@ -40,6 +43,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -48,6 +52,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -94,7 +100,7 @@ class MainActivity : ComponentActivity() {
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
         return NexusAgentLoop(
-            generate = { prompt -> engine.generate(prompt, 160) },
+            generate = { prompt -> engine.generate(prompt, 128) },
             execute = { plan, userConfirmed ->
                 when (plan) {
                     is NexusAiPlan.OpenApp -> when (val result = InstalledAppLauncher.launch(this, plan.appName)) {
@@ -232,7 +238,7 @@ class MainActivity : ComponentActivity() {
             var wakeOverlay by remember { mutableStateOf(intent?.getBooleanExtra(EXTRA_WAKE_WORD_OPEN, false) == true) }
             var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
-            var showUpdateSettings by remember { mutableStateOf(false) }
+            var showUpdateSettings by remember { mutableStateOf(false) }\n            var showDiagnostics by remember { mutableStateOf(false) }\n            var diagnosticsText by remember { mutableStateOf("") }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var chatLines by remember {
                 mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
@@ -308,7 +314,7 @@ class MainActivity : ComponentActivity() {
                                 if (spoken.isNotBlank()) submitRequest(spoken)
                             }
                             NexusWakeWordService.ACTION_STATUS ->
-                                voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()
+                                voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()\n                                NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
                         }
                     }
                 }
@@ -351,10 +357,10 @@ class MainActivity : ComponentActivity() {
                         listening = false
                         val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                         if (spoken.isNotBlank()) {
-                            voiceStatus = "Распознано: $spoken"
+                            voiceStatus = "Распознано: $spoken"\n                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано: $spoken")
                             submitRequest(spoken)
                         } else {
-                            voiceStatus = "Речь не распознана. Повтори команду."
+                            voiceStatus = "Речь не распознана. Повтори команду."\n                            NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
                         }
                     }
                     override fun onPartialResults(partialResults: Bundle?) {
@@ -457,6 +463,10 @@ class MainActivity : ComponentActivity() {
                                 TextButton(onClick = { showUpdateSettings = !showUpdateSettings }) {
                                     Text(if (showUpdateSettings) "Скрыть обновление" else "Обновить NEXUS")
                                 }
+                                TextButton(onClick = {
+                                    diagnosticsText = NexusDiagnostics.read(this@MainActivity)
+                                    showDiagnostics = true
+                                }) { Text("Логи") }
                             }
                         }
 
@@ -648,6 +658,46 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+            }
+
+            if (showDiagnostics) {
+                AlertDialog(
+                    onDismissRequest = { showDiagnostics = false },
+                    title = { Text("Диагностика NEXUS") },
+                    text = {
+                        Column(
+                            Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Последние действия и ошибки хранятся только на этом устройстве.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(diagnosticsText, style = MaterialTheme.typography.bodySmall)
+                            TextButton(onClick = {
+                                val report = NexusDiagnostics.analyze(this@MainActivity)
+                                diagnosticsText = report
+                                val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("NEXUS diagnostics", report))
+                                Toast.makeText(this@MainActivity, "Анализ скопирован", Toast.LENGTH_SHORT).show()
+                            }) { Text("Анализировать и скопировать") }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            val report = NexusDiagnostics.read(this@MainActivity)
+                            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("NEXUS logs", report))
+                            Toast.makeText(this@MainActivity, "Журнал скопирован", Toast.LENGTH_SHORT).show()
+                        }) { Text("Копировать журнал") }
+                    },
+                    dismissButton = {
+                        Row {
+                            TextButton(onClick = {
+                                NexusDiagnostics.clear(this@MainActivity)
+                                diagnosticsText = NexusDiagnostics.read(this@MainActivity)
+                            }) { Text("Очистить") }
+                            TextButton(onClick = { showDiagnostics = false }) { Text("Закрыть") }
+                        }
+                    }
+                )
             }
 
             pendingConfirmation?.let { pending ->
