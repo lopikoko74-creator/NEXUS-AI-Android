@@ -178,7 +178,8 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     bool input_ok = true;
     for (int32_t i = 0; i < prompt_count; ++i) {
         const int32_t index = llama_batch_ext_add_token(batch, 0, prompt_tokens[static_cast<size_t>(i)]);
-        if (index < 0 || !llama_batch_ext_set_pos(batch, index, reinterpret_cast<const llama_pos *>(&i))) {
+        const llama_pos prompt_position = static_cast<llama_pos>(i);
+        if (index < 0 || !llama_batch_ext_set_pos(batch, index, &prompt_position)) {
             input_ok = false;
             break;
         }
@@ -193,16 +194,16 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
 
     // Constrained decoding keeps the planner response inside the JSON action contract.
     static const char *json_grammar = R"GBNF(
-root ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws action ws "," ws "\"args\"" ws ":" ws args ws "}"
-action ::= "\"OPEN_APP\"" | "\"TAP_TEXT\"" | "\"ENTER_TEXT\"" | "\"GO_BACK\"" | "\"SCROLL\"" | "\"WAIT\"" | "\"ANSWER\"" | "\"DONE\"" | "\"UNSUPPORTED\""
-args ::= app_args | tap_args | text_args | empty_args | direction_args | wait_args | reason_args
-app_args ::= "{" ws "\"app_name\"" ws ":" ws string ws "}"
-tap_args ::= "{" ws "\"label\"" ws ":" ws string ws "}"
-text_args ::= "{" ws "\"text\"" ws ":" ws string ws "}"
-empty_args ::= "{" ws "}"
-direction_args ::= "{" ws "\"direction\"" ws ":" ws ("\"FORWARD\"" | "\"BACKWARD\"") ws "}"
-wait_args ::= "{" ws "\"milliseconds\"" ws ":" ws digits ws "}"
-reason_args ::= "{" ws ("\"summary\"" | "\"reason\"") ws ":" ws string ws "}"
+root ::= open_app | tap_text | enter_text | go_back | scroll | wait | answer | done | unsupported
+open_app ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"OPEN_APP\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"app_name\"" ws ":" ws string ws "}" ws "}"
+tap_text ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"TAP_TEXT\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"label\"" ws ":" ws string ws "}" ws "}"
+enter_text ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"ENTER_TEXT\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"text\"" ws ":" ws string ws "}" ws "}"
+go_back ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"GO_BACK\"" ws "," ws "\"args\"" ws ":" ws "{" ws "}" ws "}"
+scroll ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"SCROLL\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"direction\"" ws ":" ws ("\"FORWARD\"" | "\"BACKWARD\"") ws "}" ws "}"
+wait ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"WAIT\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"milliseconds\"" ws ":" ws digits ws "}" ws "}"
+answer ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"ANSWER\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"text\"" ws ":" ws string ws "}" ws "}"
+done ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"DONE\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"summary\"" ws ":" ws string ws "}" ws "}"
+unsupported ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"UNSUPPORTED\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"reason\"" ws ":" ws string ws "}" ws "}"
 digits ::= [0-9]+
 string ::= "\"" char* "\""
 char ::= [^"\\\n\r] | "\\" escape
@@ -213,8 +214,17 @@ ws ::= [ \t\n\r]*
 
     llama_sampler_chain_params sampler_params = llama_sampler_chain_default_params();
     llama_sampler *sampler = llama_sampler_chain_init(sampler_params);
+    if (sampler == nullptr) {
+        throw_java(env, "java/lang/IllegalStateException", "Could not create sampler chain");
+        return nullptr;
+    }
     llama_sampler *grammar_sampler = llama_sampler_init_grammar(vocab, json_grammar, "root");
-    if (grammar_sampler != nullptr) llama_sampler_chain_add(sampler, grammar_sampler);
+    if (grammar_sampler == nullptr) {
+        llama_sampler_free(sampler);
+        throw_java(env, "java/lang/IllegalStateException", "Could not initialize the JSON action grammar");
+        return nullptr;
+    }
+    llama_sampler_chain_add(sampler, grammar_sampler);
     llama_sampler_chain_add(sampler, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(sampler, llama_sampler_init_top_p(0.90f, 1));
     llama_sampler_chain_add(sampler, llama_sampler_init_temp(0.15f));
