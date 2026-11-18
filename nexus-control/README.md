@@ -5,12 +5,14 @@ Cross-platform local PC dashboard for Windows 10 and Ubuntu, designed for an And
 ## Implemented
 
 - Python PC agent for Windows and Linux.
-- Live hostname, OS, CPU load, RAM, disk free space, uptime, architecture and process list.
+- Live hostname, OS, CPU load, RAM, disk free space, uptime, architecture and process list (sorted by resident memory).
 - Authenticated local HTTP API; agent binds only to 127.0.0.1.
 - Lock, shutdown, restart and Windows shutdown cancellation, with confirmation in the dashboard.
 - Mouse touchpad (relative movement, left/right/middle click, scroll).
 - Keyboard text entry and a strict shortcut allowlist (Alt+Tab, Win+D, Ctrl+C/V/Z/S, Ctrl+Shift+Esc, Alt+F4, Enter, Escape).
 - On-demand desktop screenshot.
+- System volume control (Windows via pycaw; Linux via pactl/amixer).
+- Safe process termination for processes owned by the current logged-in user only; protected/system and other-user processes are rejected.
 - Android USB access through ADB reverse: phone browser -> 127.0.0.1:8765 -> USB ADB tunnel -> PC agent.
 - Linux systemd user service installer and Windows logon scheduled-task installer.
 - GRUB dual-boot menu template for Windows 10 and Ubuntu.
@@ -49,7 +51,7 @@ The phone cannot receive a menu from ordinary PC USB-A while PC firmware is runn
 ## Current limitations
 
 - No continuous remote video stream yet; screenshot is on demand.
-- Volume control, file transfer, launching applications and process termination are not implemented yet.
+- File transfer and launching applications are not implemented yet. Volume control depends on pycaw (Windows) or pactl/amixer (Linux).
 - Mouse/keyboard automation requires an interactive desktop session; Linux Wayland restrictions may prevent global input injection. X11 is the expected Linux desktop backend.
 - Detailed metrics/process list require psutil.
 - This package has passed GitHub CI syntax and unit tests, but has not been installed or hardware-tested on the user's PC/phone in this environment.
