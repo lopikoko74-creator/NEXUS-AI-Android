@@ -74,24 +74,30 @@ $request
             val action = root.optString("action", "").uppercase()
             val args = root.optJSONObject("args")
                 ?: return NexusPlanParseResult.Invalid("Отсутствуют аргументы действия")
+            fun only(vararg allowed: String): Boolean =
+                args.keys().asSequence().all { it in allowed }
             fun required(name: String): String? {
-                val value = args.optString(name, "").trim()
+                val value = (args.opt(name) as? String)?.trim() ?: return null
                 return value.takeIf { it.isNotEmpty() && it.length <= MAX_FIELD_LENGTH }
             }
             val plan = when (action) {
-                "OPEN_APP" -> required("app_name")?.let(NexusAiPlan::OpenApp)
-                "TAP_TEXT" -> required("label")?.let(NexusAiPlan::TapText)
-                "ENTER_TEXT" -> required("text")?.let(NexusAiPlan::EnterText)
-                "GO_BACK" -> NexusAiPlan.GoBack
-                "SCROLL" -> required("direction")?.uppercase()
+                "OPEN_APP" -> if (only("app_name")) required("app_name")?.let(NexusAiPlan::OpenApp) else null
+                "TAP_TEXT" -> if (only("label")) required("label")?.let(NexusAiPlan::TapText) else null
+                "ENTER_TEXT" -> if (only("text")) required("text")?.let(NexusAiPlan::EnterText) else null
+                "GO_BACK" -> if (args.length() == 0) NexusAiPlan.GoBack else null
+                "SCROLL" -> if (only("direction")) required("direction")?.uppercase()
                     ?.takeIf { it == "FORWARD" || it == "BACKWARD" }
-                    ?.let(NexusAiPlan::Scroll)
-                "WAIT" -> args.optInt("milliseconds", -1)
-                    .takeIf { it in 100..3000 }
-                    ?.let(NexusAiPlan::Wait)
-                "ANSWER" -> required("text")?.let(NexusAiPlan::Answer)
-                "DONE" -> required("summary")?.let(NexusAiPlan::Done)
-                "UNSUPPORTED" -> required("reason")?.let(NexusAiPlan::Unsupported)
+                    ?.let(NexusAiPlan::Scroll) else null
+                "WAIT" -> if (only("milliseconds")) {
+                    val rawMilliseconds = args.opt("milliseconds") as? Number
+                    val milliseconds = rawMilliseconds?.toDouble()
+                    if (milliseconds != null && milliseconds.isFinite() &&
+                        milliseconds % 1.0 == 0.0 && milliseconds in 100.0..3000.0
+                    ) NexusAiPlan.Wait(milliseconds.toInt()) else null
+                } else null
+                "ANSWER" -> if (only("text")) required("text")?.let(NexusAiPlan::Answer) else null
+                "DONE" -> if (only("summary")) required("summary")?.let(NexusAiPlan::Done) else null
+                "UNSUPPORTED" -> if (only("reason")) required("reason")?.let(NexusAiPlan::Unsupported) else null
                 else -> null
             }
             if (plan == null) NexusPlanParseResult.Invalid("Действие неизвестно или его аргументы некорректны")
