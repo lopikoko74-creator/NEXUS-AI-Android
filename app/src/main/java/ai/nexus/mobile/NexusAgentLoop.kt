@@ -70,7 +70,12 @@ class NexusAgentLoop(
             val activePlan = plan ?: return NexusAgentResult.Failed("Модель не вернула план", observations)
             when (activePlan) {
                 is NexusAiPlan.Answer -> return NexusAgentResult.Completed(activePlan.text, steps, observations)
-                is NexusAiPlan.Done -> return NexusAgentResult.Completed(activePlan.summary, steps, observations)
+                is NexusAiPlan.Done -> {
+                    if (observations.none { it.contains("result=SUCCESS") }) {
+                        return NexusAgentResult.Failed("Модель заявила о завершении без подтверждённого успешного действия", observations)
+                    }
+                    return NexusAgentResult.Completed(activePlan.summary, steps, observations)
+                }
                 is NexusAiPlan.Unsupported -> return NexusAgentResult.Unsupported(activePlan.reason, observations)
                 else -> Unit
             }
@@ -93,7 +98,8 @@ class NexusAgentLoop(
             }
 
             steps++
-            observations += "Step $steps / ${activePlan.javaClass.simpleName}: ${outcome.observation.take(400)}"
+            val evidence = if (outcome.success) "SUCCESS" else "FAILED"
+            observations += "Step $steps / ${activePlan.javaClass.simpleName} / result=$evidence: ${outcome.observation.take(400)}"
             if (outcome.success && outcome.taskCompleted) {
                 return NexusAgentResult.Completed(outcome.observation, steps, observations)
             }
