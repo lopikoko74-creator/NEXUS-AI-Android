@@ -118,7 +118,7 @@ class MainActivity : ComponentActivity() {
             var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
             var engineStatus by remember { mutableStateOf("Нативный движок ещё не запускался") }
             var appCommand by remember { mutableStateOf("") }
-            var appCommandStatus by remember { mutableStateOf("Команды открытия приложений пока принимаются текстом") }
+            var appCommandStatus by remember { mutableStateOf("Текстовые команды; неизвестные запросы передаются локальной модели после загрузки GGUF") }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var modelStatus by remember {
                 val savedPath = prefs.getString("model_file", null)
@@ -180,7 +180,7 @@ class MainActivity : ComponentActivity() {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Команды приложений", style = MaterialTheme.typography.titleMedium)
-                                Text("Пока голосовое распознавание не подключено, здесь можно проверить разбор команд. Например: «Открой телегу», «Запусти ватсап», «Перейди в ютуб».")
+                                Text("Голосовое распознавание будет добавлено отдельно. Известные команды выполняются напрямую, неизвестные и составные запросы разбирает локальная ИИ-модель. Примеры: «Открой телегу», «Прокрути экран вниз», «Найди настройки и открой их».")
                                 OutlinedTextField(
                                     value = appCommand,
                                     onValueChange = { appCommand = it },
