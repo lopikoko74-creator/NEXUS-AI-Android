@@ -79,6 +79,7 @@ class NexusAgentLoop(
         while (steps < maxSteps) {
             if (plan == null) {
                 emit(NexusAgentEvent(NexusAgentEventType.THINKING, "Анализирую запрос", "Обращаюсь к локальной модели на устройстве.", steps + 1))
+                val generationStartedAt = System.nanoTime()
                 val raw = try {
                     generate(NexusAiPlanner.buildPrompt(request, observations))
                 } catch (error: Exception) {
@@ -86,6 +87,13 @@ class NexusAgentLoop(
                     emit(NexusAgentEvent(NexusAgentEventType.WARNING, "Не удалось получить ответ модели", reason, steps))
                     return NexusAgentResult.Failed(reason, observations)
                 }
+                val generationMs = ((System.nanoTime() - generationStartedAt) / 1_000_000L).coerceAtLeast(0L)
+                emit(NexusAgentEvent(
+                    NexusAgentEventType.THINKING,
+                    "Модель ответила",
+                    "Генерация заняла ${generationMs} мс; получено символов: ${raw.length}.",
+                    steps + 1
+                ))
                 when (val parsed = NexusAiPlanner.parse(raw)) {
                     is NexusPlanParseResult.Valid -> {
                         plan = parsed.plan
