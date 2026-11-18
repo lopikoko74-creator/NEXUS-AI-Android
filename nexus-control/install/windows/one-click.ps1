@@ -1,8 +1,10 @@
 $ErrorActionPreference = "Stop"
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 function Find-Python {
+  $launcher = Get-Command py -ErrorAction SilentlyContinue
+  if ($launcher) { try { $candidate = (& $launcher.Source -3 -c "import sys;print(sys.executable)" 2>$null | Select-Object -First 1); if ($candidate -and (Test-Path $candidate)) { return $candidate } } catch {} }
   $p = Get-Command python -ErrorAction SilentlyContinue
-  if ($p) { return $p.Source }
+  if ($p -and $p.Source -notmatch "WindowsApps") { return $p.Source }
   $cmd = Get-Command winget -ErrorAction SilentlyContinue
   if (-not $cmd) { throw "Python 3 is missing and winget is unavailable. Install Python 3.11+ once, then run START-NEXUS.bat again." }
   Write-Host "[1/4] Installing Python 3.12..."
@@ -34,6 +36,12 @@ Write-Host "[3/4] Installing NEXUS CONTROL agent..."
 & $Python (Join-Path $Root "install\windows\install-core.py") $Root
 if ($LASTEXITCODE -ne 0) { throw "Agent installation failed." }
 $Adb = Find-Adb
+$Watch = Join-Path $Root "install\\windows\\usb-watch.ps1"
+$WatchAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument ('-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "' + $Watch + '" -AdbPath "' + $Adb + '"')
+$WatchTrigger = New-ScheduledTaskTrigger -AtLogOn
+$WatchPrincipal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName "NEXUS CONTROL USB Bridge" -Action $WatchAction -Trigger $WatchTrigger -Principal $WatchPrincipal -Force | Out-Null
+Start-ScheduledTask -TaskName "NEXUS CONTROL USB Bridge"
 Write-Host "[4/4] Connect TECNO by USB. Unlock phone and approve the USB debugging prompt."
 & $Adb start-server | Out-Null
 $authorized = $false
