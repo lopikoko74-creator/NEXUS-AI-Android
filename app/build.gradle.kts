@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -15,7 +17,7 @@ val hasReleaseSigning = listOf(
 val nexusKeystoreFile = layout.buildDirectory.file("signing/nexus-release.jks").get().asFile
 if (hasReleaseSigning) {
     nexusKeystoreFile.parentFile.mkdirs()
-    nexusKeystoreFile.writeBytes(java.util.Base64.getDecoder().decode(nexusKeystoreBase64))
+    nexusKeystoreFile.writeBytes(Base64.getDecoder().decode(nexusKeystoreBase64))
 }
 
 android {
