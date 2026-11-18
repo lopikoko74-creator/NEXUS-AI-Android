@@ -23,8 +23,8 @@ object NexusAiPlanner {
     private const val MAX_RAW_LENGTH = 4096
 
     fun buildPrompt(userRequest: String, observations: List<String> = emptyList()): String {
-        val request = userRequest.trim().take(MAX_FIELD_LENGTH)
-        val history = observations.takeLast(8).joinToString("\n") { "- " + it.take(400) }
+        val request = escapeUntrusted(userRequest.trim().take(MAX_FIELD_LENGTH))
+        val history = observations.takeLast(8).joinToString("\n") { "- " + escapeUntrusted(it.take(400)) }
             .ifBlank { "- No actions have been executed yet." }
         return """
 You are the local task-planning model inside NEXUS, an Android phone agent.
@@ -92,6 +92,9 @@ $request
             NexusPlanParseResult.Invalid("Не удалось проверить план модели")
         }
     }
+
+    private fun escapeUntrusted(value: String): String =
+        value.replace("<", "‹").replace(">", "›")
 
     private fun extractJsonObject(raw: String): String? {
         val start = raw.indexOf('{')
