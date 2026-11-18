@@ -7,6 +7,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   assemble:
     runs-on: ubuntu-latest
@@ -57,6 +60,23 @@ jobs:
           name: nexus-ai-release-signed
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
+
+      - name: Generate APK checksum
+        if: ${{ env.HAS_NEXUS_SIGNING == 'true' }}
+        run: sha256sum app/build/outputs/apk/release/app-release.apk > app/build/outputs/apk/release/app-release.apk.sha256
+
+      - name: Publish signed APK automatically to GitHub Releases
+        if: ${{ env.HAS_NEXUS_SIGNING == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.5.${{ github.run_number }}
+          name: NEXUS AI v0.5.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/app-release.apk.sha256
 
       - name: Upload CI-only debug APK
         if: ${{ env.HAS_NEXUS_SIGNING != 'true' }}
