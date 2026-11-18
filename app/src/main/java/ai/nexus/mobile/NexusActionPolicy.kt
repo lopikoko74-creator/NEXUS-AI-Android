@@ -7,6 +7,7 @@ package ai.nexus.mobile
 sealed interface NexusAction {
     data object OpenAccessibilitySettings : NexusAction
     data object GoBack : NexusAction
+    data class Scroll(val forward: Boolean) : NexusAction
     data class TapVisibleText(val exactLabel: String) : NexusAction
     data class EnterText(val text: String) : NexusAction
     data class SendMessage(val recipient: String, val text: String) : NexusAction
@@ -34,7 +35,8 @@ data class ActionDecision(
 object NexusActionPolicy {
     fun evaluate(action: NexusAction): ActionDecision = when (action) {
         NexusAction.OpenAccessibilitySettings,
-        NexusAction.GoBack -> ActionDecision(
+        NexusAction.GoBack,
+        is NexusAction.Scroll -> ActionDecision(
             allowed = true,
             requiresConfirmation = false,
             reason = "Локальное навигационное действие"
