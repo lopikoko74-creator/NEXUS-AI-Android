@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <android/log.h>
 #include <algorithm>
+#include <atomic>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -15,6 +16,17 @@ std::mutex g_mutex;
 llama_model *g_model = nullptr;
 llama_context *g_context = nullptr;
 bool g_backend_initialized = false;
+std::atomic<bool> g_cancel_requested{false};
+std::atomic<float> g_load_progress{0.0f};
+
+bool on_model_load_progress(float progress, void *) {
+    g_load_progress.store(progress, std::memory_order_relaxed);
+    return !g_cancel_requested.load(std::memory_order_relaxed);
+}
+
+bool should_abort_inference(void *) {
+    return g_cancel_requested.load(std::memory_order_relaxed);
+}
 
 void free_context() {
     if (g_context != nullptr) {
@@ -55,6 +67,8 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
     const char *path = env->GetStringUTFChars(jpath, nullptr);
     if (path == nullptr) return nullptr;
 
+    g_cancel_requested.store(false, std::memory_order_relaxed);
+    g_load_progress.store(0.0f, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(g_mutex);
     if (!g_backend_initialized) {
         llama_backend_init();
@@ -64,30 +78,35 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
 
     llama_model_params model_params = llama_model_default_params();
     model_params.load_mode = LLAMA_LOAD_MODE_MMAP;
+    model_params.progress_callback = on_model_load_progress;
+    model_params.progress_callback_user_data = nullptr;
     g_model = llama_model_load_from_file(path, model_params);
     env->ReleaseStringUTFChars(jpath, path);
 
     if (g_model == nullptr) {
-        throw_java(env, "java/lang/IllegalStateException", "llama.cpp could not load this GGUF model");
+        throw_java(env, "java/lang/IllegalStateException", g_cancel_requested.load() ? "Загрузка модели отменена" : "llama.cpp could not load this GGUF model");
         return nullptr;
     }
 
     llama_context_params context_params = llama_context_default_params();
     context_params.n_ctx = 2048;
-    context_params.n_batch = 2048;
-    context_params.n_ubatch = 512;
+    context_params.n_batch = 512;
+    context_params.n_ubatch = 128;
     const unsigned int hardware_threads = std::thread::hardware_concurrency();
-    const int inference_threads = static_cast<int>(std::max(2u, std::min(4u, hardware_threads == 0 ? 4u : hardware_threads)));
+    const int inference_threads = static_cast<int>(std::max(2u, std::min(6u, hardware_threads == 0 ? 6u : hardware_threads)));
     context_params.n_threads = inference_threads;
     context_params.n_threads_batch = inference_threads;
     context_params.no_perf = true;
+    context_params.abort_callback = should_abort_inference;
+    context_params.abort_callback_data = nullptr;
     g_context = llama_init_from_model(g_model, context_params);
     if (g_context == nullptr) {
         free_model();
-        throw_java(env, "java/lang/IllegalStateException", "Could not create the inference context");
+        throw_java(env, "java/lang/IllegalStateException", g_cancel_requested.load() ? "Загрузка модели отменена" : "Could not create the inference context");
         return nullptr;
     }
 
+    g_load_progress.store(1.0f, std::memory_order_relaxed);
     char description[256] = {};
     llama_model_desc(g_model, description, sizeof(description));
     const double billions = static_cast<double>(llama_model_n_params(g_model)) / 1.0e9;
@@ -114,6 +133,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     const int token_limit = std::max(16, std::min(static_cast<int>(max_tokens), 160));
 
     std::lock_guard<std::mutex> lock(g_mutex);
+    g_cancel_requested.store(false, std::memory_order_relaxed);
     if (g_model == nullptr || g_context == nullptr) {
         throw_java(env, "java/lang/IllegalStateException", "Load a GGUF model before generation");
         return nullptr;
@@ -236,6 +256,11 @@ ws ::= [ \t\n\r]*
     llama_token token = LLAMA_TOKEN_NULL;
     int32_t position = prompt_count;
     for (int step = 0; step < token_limit; ++step) {
+        if (g_cancel_requested.load(std::memory_order_relaxed)) {
+            llama_sampler_free(sampler);
+            throw_java(env, "java/lang/InterruptedException", "Генерация остановлена пользователем");
+            return nullptr;
+        }
         token = llama_sampler_sample(sampler, g_context, -1);
         if (token == LLAMA_TOKEN_NULL) {
             llama_sampler_free(sampler);
@@ -281,13 +306,25 @@ ws ::= [ \t\n\r]*
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_ai_nexus_mobile_NativeLlamaEngine_nativeCancel(JNIEnv *, jobject) {
+    g_cancel_requested.store(true, std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT jfloat JNICALL
+Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadProgress(JNIEnv *, jobject) {
+    return g_load_progress.load(std::memory_order_relaxed);
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_ai_nexus_mobile_NativeLlamaEngine_nativeUnloadModel(JNIEnv *, jobject) {
+    g_cancel_requested.store(true, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(g_mutex);
     free_model();
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_ai_nexus_mobile_NativeLlamaEngine_nativeShutdown(JNIEnv *, jobject) {
+    g_cancel_requested.store(true, std::memory_order_relaxed);
     std::lock_guard<std::mutex> lock(g_mutex);
     free_model();
     if (g_backend_initialized) {
