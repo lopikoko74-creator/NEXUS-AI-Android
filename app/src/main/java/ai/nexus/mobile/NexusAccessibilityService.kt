@@ -32,9 +32,7 @@ class NexusAccessibilityService : AccessibilityService() {
                 true
             }
             NexusAction.GoBack -> performGlobalAction(GLOBAL_ACTION_BACK)
-            is NexusAction.Scroll -> performGlobalAction(
-                if (action.forward) GLOBAL_ACTION_SCROLL_FORWARD else GLOBAL_ACTION_SCROLL_BACKWARD
-            )
+            is NexusAction.Scroll -> scrollActiveWindow(action.forward)
             is NexusAction.TapVisibleText -> clickVisibleText(action.exactLabel)
             is NexusAction.EnterText -> setTextOnFocusedNode(action.text)
             is NexusAction.SendMessage,
@@ -50,6 +48,35 @@ class NexusAccessibilityService : AccessibilityService() {
         val labels = ArrayList<String>()
         collectVisibleLabels(root, labels, maxItems.coerceIn(1, 60))
         return labels.distinct().joinToString(" | ").ifBlank { "Active window contains no readable labels." }
+    }
+
+    /**
+     * Scrolls the first visible node that advertises the requested accessibility action.
+     * Global accessibility actions do not include scroll-forward/backward constants.
+     */
+    private fun scrollActiveWindow(forward: Boolean): Boolean {
+        val root = rootInActiveWindow ?: return false
+        val actionId = if (forward) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD
+        } else {
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        }
+        return performScrollOnNode(root, actionId)
+    }
+
+    private fun performScrollOnNode(node: AccessibilityNodeInfo, actionId: Int): Boolean {
+        if (node.isVisibleToUser && node.isEnabled && node.isScrollable &&
+            node.actionList.any { it.id == actionId } &&
+            node.performAction(actionId)
+        ) {
+            return true
+        }
+
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            if (performScrollOnNode(child, actionId)) return true
+        }
+        return false
     }
 
     fun clickVisibleText(label: String): Boolean {
