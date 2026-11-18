@@ -1,6 +1,12 @@
 package ai.nexus.mobile
 
 import android.content.Intent
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -9,6 +15,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -47,6 +55,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.io.File
+import java.util.Locale
 
 private enum class ChatRole { USER, ASSISTANT, ACTIVITY }
 
@@ -160,6 +169,8 @@ class MainActivity : ComponentActivity() {
             var engineStatus by remember { mutableStateOf("Модель не загружена в оперативную память") }
             var command by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
+            var listening by remember { mutableStateOf(false) }
+            var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var chatLines by remember {
@@ -222,6 +233,77 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     runAgentFallback(request, ::showEvent, ::finishAgent)
+                }
+            }
+
+
+            val speechRecognizer = remember {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    SpeechRecognizer.isOnDeviceRecognitionAvailable(this@MainActivity)) {
+                    SpeechRecognizer.createOnDeviceSpeechRecognizer(this@MainActivity)
+                } else {
+                    SpeechRecognizer.createSpeechRecognizer(this@MainActivity)
+                }
+            }
+            DisposableEffect(speechRecognizer) {
+                speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) { listening = true; voiceStatus = "Слушаю команду…" }
+                    override fun onBeginningOfSpeech() { voiceStatus = "Речь распознана, обрабатываю…" }
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() { listening = false; voiceStatus = "Распознаю сказанное…" }
+                    override fun onError(error: Int) {
+                        listening = false
+                        voiceStatus = when (error) {
+                            SpeechRecognizer.ERROR_NO_MATCH -> "Не удалось разобрать речь. Попробуй ещё раз."
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Не услышал команду."
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Нет разрешения на микрофон."
+                            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                                "Системный распознаватель требует сеть. Проверь доступность офлайн-пакета русского языка."
+                            else -> "Ошибка распознавания речи (код $error)."
+                        }
+                        addLine(ChatRole.ACTIVITY, "Голосовой ввод", voiceStatus)
+                    }
+                    override fun onResults(results: Bundle?) {
+                        listening = false
+                        val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                        if (spoken.isNotBlank()) {
+                            voiceStatus = "Распознано: $spoken"
+                            submitRequest(spoken)
+                        } else {
+                            voiceStatus = "Речь не распознана. Повтори команду."
+                        }
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                        if (!partial.isNullOrBlank()) voiceStatus = "Слышу: $partial"
+                    }
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+                onDispose { speechRecognizer.destroy() }
+            }
+            val microphonePermission = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { granted ->
+                if (granted) {
+                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "ru-RU")
+                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                        putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                    }
+                    try {
+                        speechRecognizer.startListening(intent)
+                        listening = true
+                        voiceStatus = "Запускаю распознавание…"
+                    } catch (error: Exception) {
+                        listening = false
+                        voiceStatus = "Не удалось запустить микрофон: ${error.message ?: error.javaClass.simpleName}"
+                    }
+                } else {
+                    voiceStatus = "Для голосовых команд нужно разрешение на микрофон."
                 }
             }
 
@@ -348,12 +430,28 @@ class MainActivity : ComponentActivity() {
                         }
 
                         Spacer(Modifier.height(8.dp))
+                        Text(voiceStatus, Modifier.fillMaxWidth().padding(bottom = 5.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (listening) {
+                                        speechRecognizer.stopListening()
+                                        listening = false
+                                        voiceStatus = "Распознавание остановлено."
+                                    } else if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    } else {
+                                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
+                                enabled = !busy,
+                                modifier = Modifier.height(56.dp)
+                            ) { Text(if (listening) "Стоп" else "🎙") }
                             OutlinedTextField(
                                 value = command,
                                 onValueChange = { command = it },
                                 modifier = Modifier.weight(1f),
-                                placeholder = { Text("Напиши NEXUS…") },
+                                placeholder = { Text("Скажи команду или напиши…") },
                                 maxLines = 4,
                                 enabled = !busy
                             )
