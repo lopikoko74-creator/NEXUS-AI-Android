@@ -29,10 +29,10 @@ class NexusAgentLoop(
 ) {
     init { require(maxSteps in 1..10) }
 
-    suspend fun run(request: String): NexusAgentResult {
+    suspend fun run(request: String, initialObservations: List<String> = emptyList()): NexusAgentResult {
         val clean = request.trim()
         if (clean.isEmpty()) return NexusAgentResult.Failed("Пустая команда", emptyList())
-        return continueLoop(clean, emptyList(), 0, null, false)
+        return continueLoop(clean, initialObservations.takeLast(4), 0, null, false)
     }
 
     suspend fun resume(pending: NexusPendingConfirmation): NexusAgentResult =
@@ -115,6 +115,8 @@ class NexusAgentLoop(
         is NexusAiPlan.TapText -> "TAP_TEXT:${plan.exactLabel.lowercase()}"
         is NexusAiPlan.EnterText -> "ENTER_TEXT:${plan.text}"
         NexusAiPlan.GoBack -> "GO_BACK"
+        is NexusAiPlan.Scroll -> "SCROLL:${plan.direction}"
+        is NexusAiPlan.Wait -> "WAIT:${plan.milliseconds}"
         is NexusAiPlan.Answer -> "ANSWER:${plan.text}"
         is NexusAiPlan.Done -> "DONE:${plan.summary}"
         is NexusAiPlan.Unsupported -> "UNSUPPORTED:${plan.reason}"
