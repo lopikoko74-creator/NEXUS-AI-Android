@@ -198,8 +198,15 @@ class MainActivity : ComponentActivity() {
         }
         textToSpeech = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                textToSpeech?.language = Locale("ru", "RU")
-                textToSpeech?.setSpeechRate(1.0f)
+                textToSpeech?.let { tts ->
+                    val russian = Locale("ru", "RU")
+                    val languageResult = tts.setLanguage(russian)
+                    // Original JARVIS-inspired delivery: calm, lower-pitched,
+                    // measured Russian speech. Uses the voice supplied by the
+                    // device TTS engine; no actor/character voice clone.
+                    tts.setPitch(0.82f)
+                    tts.setSpeechRate(0.90f)
+                }
             }
         }
         val prefs = getSharedPreferences("nexus_settings", MODE_PRIVATE)
