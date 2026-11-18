@@ -18,3 +18,11 @@ jobs:
           python-version: "3.11"
       - run: python -m py_compile nexus-control/agent/nexus_agent.py
       - run: PYTHONPATH=nexus-control/agent python -m unittest discover -s nexus-control/agent/tests -v
+      - name: Package PC dashboard
+        run: zip -r NEXUS-CONTROL-PC.zip nexus-control
+      - name: Upload install bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEXUS-CONTROL-PC
+          path: NEXUS-CONTROL-PC.zip
+          if-no-files-found: error
