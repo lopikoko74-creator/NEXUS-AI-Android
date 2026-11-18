@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 #include "llama.h"
 
@@ -75,8 +76,10 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
     context_params.n_ctx = 2048;
     context_params.n_batch = 2048;
     context_params.n_ubatch = 512;
-    context_params.n_threads = 4;
-    context_params.n_threads_batch = 4;
+    const unsigned int hardware_threads = std::thread::hardware_concurrency();
+    const int inference_threads = static_cast<int>(std::max(2u, std::min(6u, hardware_threads == 0 ? 4u : hardware_threads)));
+    context_params.n_threads = inference_threads;
+    context_params.n_threads_batch = inference_threads;
     context_params.no_perf = true;
     g_context = llama_init_from_model(g_model, context_params);
     if (g_context == nullptr) {
@@ -118,6 +121,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
 
     // Use the GGUF's own chat template when available (ChatML, Llama, Gemma, etc.).
     // Fall back to the raw instruction prompt for models without template metadata.
+    bool formatted_with_template = false;
     const char *chat_template = llama_model_chat_template(g_model, nullptr);
     if (chat_template != nullptr) {
         llama_chat_message message = {"user", prompt.c_str()};
@@ -134,7 +138,10 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
                     static_cast<int32_t>(formatted.size())
                 );
             }
-            if (formatted_size > 0) prompt.assign(formatted.data(), static_cast<size_t>(formatted_size));
+            if (formatted_size > 0) {
+                prompt.assign(formatted.data(), static_cast<size_t>(formatted_size));
+                formatted_with_template = true;
+            }
         }
     }
     if (prompt.size() > 48000) {
@@ -146,13 +153,13 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     std::vector<llama_token> prompt_tokens(prompt.size() + 32);
     int32_t prompt_count = llama_tokenize(
         vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
-        prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()), true, false
+        prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()), !formatted_with_template, formatted_with_template
     );
     if (prompt_count < 0) {
         prompt_tokens.resize(static_cast<size_t>(-prompt_count));
         prompt_count = llama_tokenize(
             vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()),
-            prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()), true, false
+            prompt_tokens.data(), static_cast<int32_t>(prompt_tokens.size()), !formatted_with_template, formatted_with_template
         );
     }
     if (prompt_count <= 0 || prompt_count > 1900) {
