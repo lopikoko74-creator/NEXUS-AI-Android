@@ -10,6 +10,8 @@ on:
 jobs:
   assemble:
     runs-on: ubuntu-latest
+    env:
+      HAS_NEXUS_SIGNING: ${{ env.HAS_NEXUS_SIGNING == 'true' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,7 +38,7 @@ jobs:
         run: gradle --no-daemon :app:testDebugUnitTest
 
       - name: Assemble signed APK when signing secrets are configured
-        if: ${{ secrets.NEXUS_KEYSTORE_BASE64 != '' && secrets.NEXUS_STORE_PASSWORD != '' && secrets.NEXUS_KEY_ALIAS != '' && secrets.NEXUS_KEY_PASSWORD != '' }}
+        if: ${{ env.HAS_NEXUS_SIGNING == 'true' }}
         env:
           NEXUS_KEYSTORE_BASE64: ${{ secrets.NEXUS_KEYSTORE_BASE64 }}
           NEXUS_STORE_PASSWORD: ${{ secrets.NEXUS_STORE_PASSWORD }}
@@ -45,11 +47,11 @@ jobs:
         run: gradle --no-daemon :app:assembleRelease
 
       - name: Assemble unsigned-for-updates debug APK (CI validation only)
-        if: ${{ secrets.NEXUS_KEYSTORE_BASE64 == '' || secrets.NEXUS_STORE_PASSWORD == '' || secrets.NEXUS_KEY_ALIAS == '' || secrets.NEXUS_KEY_PASSWORD == '' }}
+        if: ${{ env.HAS_NEXUS_SIGNING != 'true' }}
         run: gradle --no-daemon :app:assembleDebug
 
       - name: Upload signed release APK
-        if: ${{ secrets.NEXUS_KEYSTORE_BASE64 != '' && secrets.NEXUS_STORE_PASSWORD != '' && secrets.NEXUS_KEY_ALIAS != '' && secrets.NEXUS_KEY_PASSWORD != '' }}
+        if: ${{ env.HAS_NEXUS_SIGNING == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: nexus-ai-release-signed
@@ -57,7 +59,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload CI-only debug APK
-        if: ${{ secrets.NEXUS_KEYSTORE_BASE64 == '' || secrets.NEXUS_STORE_PASSWORD == '' || secrets.NEXUS_KEY_ALIAS == '' || secrets.NEXUS_KEY_PASSWORD == '' }}
+        if: ${{ env.HAS_NEXUS_SIGNING != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: nexus-ai-debug-ci-only
