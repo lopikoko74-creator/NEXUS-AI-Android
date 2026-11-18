@@ -50,11 +50,19 @@ class NexusAgentLoopTest {
     @Test
     fun resumesExactPendingActionOnlyAfterConfirmation() = runBlocking {
         var confirmed = false
+        var generation = 0
         val loop = NexusAgentLoop(
-            generate = { """{"version":1,"action":"TAP_TEXT","args":{"label":"Настройки"}}""" },
+            generate = {
+                generation++
+                if (generation == 1) {
+                    """{"version":1,"action":"TAP_TEXT","args":{"label":"Настройки"}}"""
+                } else {
+                    """{"version":1,"action":"DONE","args":{"summary":"Экран настроек открыт"}}"""
+                }
+            },
             execute = { _, approved ->
                 confirmed = approved
-                if (approved) NexusExecutionOutcome(true, "Tapped", taskCompleted = true)
+                if (approved) NexusExecutionOutcome(true, "Tapped", taskCompleted = false)
                 else NexusExecutionOutcome(false, "Tap requires approval", requiresConfirmation = true)
             }
         )
