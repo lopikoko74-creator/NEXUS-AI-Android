@@ -72,6 +72,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import java.io.File
 import java.util.Locale
 
@@ -85,6 +87,7 @@ private data class ChatLine(
 )
 
 class MainActivity : ComponentActivity() {
+    private var agentJob: Job? = null
     companion object { const val EXTRA_WAKE_WORD_OPEN = "nexus_wake_word_open" }
     private var textToSpeech: TextToSpeech? = null
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
@@ -159,7 +162,7 @@ class MainActivity : ComponentActivity() {
             onResult(NexusAgentResult.Failed("Локальная GGUF-модель не загружена. Открой настройки модели и нажми «Загрузить модель».", emptyList()))
             return
         }
-        lifecycleScope.launch {
+        agentJob = lifecycleScope.launch {
             val installedApps = InstalledAppLauncher.listLaunchableApps(this@MainActivity)
             val screen = NexusAccessibilityService.current?.describeActiveWindow()
                 ?: "Служба специальных возможностей не подключена; доступен только запуск приложений."
@@ -169,6 +172,8 @@ class MainActivity : ComponentActivity() {
             )
             val result = try {
                 createAgentLoop(onEvent).run(request, context)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 NexusAgentResult.Failed("Ошибка выполнения: ${error.message ?: error.javaClass.simpleName}", emptyList())
             }
@@ -516,6 +521,8 @@ class MainActivity : ComponentActivity() {
                                         OutlinedButton(onClick = {
                                             lifecycleScope.launch {
                                                 engineStatus = "Останавливаю загрузку…"
+                                                agentJob?.cancel()
+                                                agentJob = null
                                                 try {
                                                     NativeLlamaEngine.getInstance(this@MainActivity).cancelAndUnload()
                                                     engineStatus = "Загрузка экстренно остановлена."
@@ -531,6 +538,8 @@ class MainActivity : ComponentActivity() {
                                     OutlinedButton(onClick = {
                                         busy = false
                                         pendingConfirmation = null
+                                        agentJob?.cancel()
+                                        agentJob = null
                                         lifecycleScope.launch {
                                             engineStatus = "Экстренно выключаю модель…"
                                             try {
