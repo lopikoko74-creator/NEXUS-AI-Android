@@ -189,27 +189,49 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     prompt_tokens.resize(static_cast<size_t>(prompt_count));
     llama_memory_clear(llama_get_memory(g_context), true);
 
-    llama_batch_ext *batch = llama_batch_ext_init(g_context);
-    if (batch == nullptr) {
-        throw_java(env, "java/lang/IllegalStateException", "Could not allocate inference batch");
-        return nullptr;
-    }
-
-    bool input_ok = true;
-    for (int32_t i = 0; i < prompt_count; ++i) {
-        const int32_t index = llama_batch_ext_add_token(batch, 0, prompt_tokens[static_cast<size_t>(i)]);
-        const llama_pos prompt_position = static_cast<llama_pos>(i);
-        if (index < 0 || !llama_batch_ext_set_pos(batch, index, &prompt_position)) {
-            input_ok = false;
-            break;
+    // Prefill in chunks no larger than n_batch (512). Sending the entire
+    // prompt in one batch can exceed llama_context_params.n_batch and fail
+    // during prompt evaluation even when the prompt fits inside n_ctx.
+    constexpr int32_t kPromptBatchSize = 512;
+    int32_t decode_result = 0;
+    for (int32_t offset = 0; offset < prompt_count; offset += kPromptBatchSize) {
+        const int32_t chunk_size = std::min(kPromptBatchSize, prompt_count - offset);
+        llama_batch_ext *batch = llama_batch_ext_init(g_context);
+        if (batch == nullptr) {
+            throw_java(env, "java/lang/IllegalStateException", "Could not allocate inference batch");
+            return nullptr;
         }
-        if (i == prompt_count - 1) llama_batch_ext_set_output_logits(batch, index, true);
-    }
-    int32_t decode_result = input_ok ? llama_process(g_context, LLAMA_PROCESS_TYPE_DECODE, batch) : -1;
-    llama_batch_ext_free(batch);
-    if (!input_ok || decode_result != 0) {
-        throw_java(env, "java/lang/IllegalStateException", "Prompt evaluation failed in llama.cpp");
-        return nullptr;
+
+        bool input_ok = true;
+        for (int32_t j = 0; j < chunk_size; ++j) {
+            const int32_t token_index = offset + j;
+            const int32_t index = llama_batch_ext_add_token(
+                batch, 0, prompt_tokens[static_cast<size_t>(token_index)]
+            );
+            const llama_pos prompt_position = static_cast<llama_pos>(token_index);
+            if (index < 0 || !llama_batch_ext_set_pos(batch, index, &prompt_position)) {
+                input_ok = false;
+                break;
+            }
+            if (token_index == prompt_count - 1) {
+                llama_batch_ext_set_output_logits(batch, index, true);
+            }
+        }
+
+        decode_result = input_ok
+            ? llama_process(g_context, LLAMA_PROCESS_TYPE_DECODE, batch)
+            : -1;
+        llama_batch_ext_free(batch);
+        if (!input_ok || decode_result != 0) {
+            LOGE("Prompt evaluation failed: chunk_offset=%d chunk_size=%d total_tokens=%d decode_result=%d",
+                 offset, chunk_size, prompt_count, decode_result);
+            throw_java(
+                env,
+                "java/lang/IllegalStateException",
+                "Prompt evaluation failed in llama.cpp (batch prefill; see NEXUS-LLAMA log)"
+            );
+            return nullptr;
+        }
     }
 
     // Constrained decoding keeps the planner response inside the JSON action contract.
