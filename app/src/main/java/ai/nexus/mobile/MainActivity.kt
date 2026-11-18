@@ -54,6 +54,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -195,8 +196,8 @@ class MainActivity : ComponentActivity() {
         // Draw edge-to-edge, but keep all interactive content inside Android's safe area.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = true
-            isAppearanceLightNavigationBars = true
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
@@ -408,12 +409,28 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            MaterialTheme {
-                Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color.White) {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = androidx.compose.ui.graphics.Color(0xFF70DFFF),
+                    onPrimary = androidx.compose.ui.graphics.Color(0xFF06121D),
+                    primaryContainer = androidx.compose.ui.graphics.Color(0xFF15394F),
+                    secondary = androidx.compose.ui.graphics.Color(0xFFB69AFF),
+                    secondaryContainer = androidx.compose.ui.graphics.Color(0xFF30254B),
+                    background = androidx.compose.ui.graphics.Color(0xFF070B14),
+                    surface = androidx.compose.ui.graphics.Color(0xFF0D1523),
+                    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF1A2638),
+                    surfaceContainerLow = androidx.compose.ui.graphics.Color(0xFF111D2D),
+                    surfaceContainerHighest = androidx.compose.ui.graphics.Color(0xFF24334A),
+                    onBackground = androidx.compose.ui.graphics.Color(0xFFEAF2FF),
+                    onSurface = androidx.compose.ui.graphics.Color(0xFFEAF2FF),
+                    onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFFA3B2C8)
+                )
+            ) {
+                Surface(Modifier.fillMaxSize(), color = androidx.compose.ui.graphics.Color(0xFF070B14)) {
                     Column(
                         Modifier
                             .fillMaxSize()
-                            .background(androidx.compose.ui.graphics.Color.White)
+                            .background(androidx.compose.ui.graphics.Color(0xFF070B14))
                             .windowInsetsPadding(WindowInsets.safeDrawing)
                             .background(MaterialTheme.colorScheme.background)
                             .padding(horizontal = 12.dp, vertical = 8.dp)
@@ -714,11 +731,10 @@ private fun NexusChatBubble(line: ChatLine) {
 
 @androidx.compose.runtime.Composable
 private fun NexusVoiceOrb(active: Boolean) {
-    if (!active) return
     val transition = rememberInfiniteTransition(label = "nexus-voice-orb")
     val pulse by transition.animateFloat(
         initialValue = 0.88f,
-        targetValue = 1.12f,
+        targetValue = if (active) 1.12f else 1.035f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1050),
             repeatMode = RepeatMode.Reverse
