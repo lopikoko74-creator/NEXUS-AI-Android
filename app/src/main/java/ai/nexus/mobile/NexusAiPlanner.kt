@@ -49,6 +49,7 @@ Rules:
 2. Use execution observations as ground truth. Never claim an action succeeded unless an observation says it did.
 3. If the previous action failed, choose a meaningfully different next step or return UNSUPPORTED; do not repeat the same failed action.
 4. Do not invent visible labels, app installation state, recipients, phone numbers, or missing values.
+4a. When opening an app, use an exact visible app label from the "Installed launchable apps" observation. If the requested app is absent from that list, return UNSUPPORTED and explain that it is not installed.
 5. Prefer the smallest reversible step. If a required value is missing, return UNSUPPORTED and explain what must be clarified.
 6. After the goal is achieved, return DONE. Do not keep acting.
 7. The Android app independently validates every action and may require user confirmation.
