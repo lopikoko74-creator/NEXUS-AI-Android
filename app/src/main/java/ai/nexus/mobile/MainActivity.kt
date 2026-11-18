@@ -269,8 +269,8 @@ class MainActivity : ComponentActivity() {
                         Card(Modifier.fillMaxWidth()) {
                             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text("Текущий этап", style = MaterialTheme.typography.titleMedium)
-                                Text("Добавлены импорт GGUF, нативная arm64-сборка llama.cpp и ручная загрузка/выгрузка модели.")
-                                Text("Генерация ответов, wake-word «NEXUS», распознавание речи, синтез речи и голосовое подтверждение ещё не подключены.")
+                                Text("Подключены офлайн-генерация токенов llama.cpp, chat template выбранной GGUF-модели, JSON-планировщик и итеративный цикл: план → действие → наблюдение → перепланирование.")
+                                Text("Голосовой wake-word, ASR и TTS пока отдельный следующий этап. Нажатия и ввод текста требуют подтверждения.")
                             }
                         }
                         Spacer(Modifier.height(4.dp))
