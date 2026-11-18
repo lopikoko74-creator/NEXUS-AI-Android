@@ -70,8 +70,14 @@ $request
             ?: return NexusPlanParseResult.Invalid("В ответе модели не найден JSON-объект")
         return try {
             val root = JSONObject(json)
-            if (root.optInt("version", -1) != 1) return NexusPlanParseResult.Invalid("Неизвестная версия плана")
-            val action = root.optString("action", "").uppercase()
+            if (root.keys().asSequence().any { it !in setOf("version", "action", "args") }) {
+                return NexusPlanParseResult.Invalid("План содержит неизвестные поля")
+            }
+            val version = root.opt("version") as? Number
+            if (version?.toDouble() != 1.0) return NexusPlanParseResult.Invalid("Неизвестная версия плана")
+            val actionValue = root.opt("action") as? String
+                ?: return NexusPlanParseResult.Invalid("Не указано действие")
+            val action = actionValue.uppercase()
             val args = root.optJSONObject("args")
                 ?: return NexusPlanParseResult.Invalid("Отсутствуют аргументы действия")
             fun only(vararg allowed: String): Boolean =
