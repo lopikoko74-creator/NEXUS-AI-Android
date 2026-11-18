@@ -95,6 +95,16 @@ fun NexusUpdatePanel() {
                                     error("Установлена версия ${current.versionName}; релиз ${tag} не новее. Проверь versionCode/versionName в сборке.")
                                 val target = File(context.cacheDir, "updates/nexus-${tag}.apk")
                                 target.parentFile?.mkdirs()
+                                val checksumAsset = (0 until assets.length()).map { assets.getJSONObject(it) }
+                                    .firstOrNull { it.optString("name") == apk.optString("name") + ".sha256" }
+                                    ?: error("В релизе отсутствует файл контрольной суммы APK.")
+                                val checksumConnection = (URL(checksumAsset.getString("browser_download_url")).openConnection() as HttpURLConnection).apply {
+                                    connectTimeout = 15000
+                                    readTimeout = 30000
+                                    setRequestProperty("User-Agent", "NEXUS-AI-Updater")
+                                }
+                                val expectedHash = checksumConnection.inputStream.bufferedReader().use { it.readText().trim().split(Regex("\\s+"))[0].lowercase() }
+                                checksumConnection.disconnect()
                                 val download = (URL(apk.getString("browser_download_url")).openConnection() as HttpURLConnection).apply {
                                     connectTimeout = 15000
                                     readTimeout = 120000
@@ -102,6 +112,12 @@ fun NexusUpdatePanel() {
                                 }
                                 download.inputStream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
                                 download.disconnect()
+                                val actualHash = MessageDigest.getInstance("SHA-256").digest(target.readBytes())
+                                    .joinToString("") { b -> "%02x".format(b) }
+                                if (actualHash != expectedHash) {
+                                    target.delete()
+                                    error("SHA-256 APK не совпадает с опубликованной контрольной суммой.")
+                                }
                                 val archive = context.packageManager.getPackageArchiveInfo(target.absolutePath,
                                     PackageManager.GET_SIGNING_CERTIFICATES) ?: error("APK не прошёл разбор Android PackageManager.")
                                 if (archive.packageName != context.packageName) error("APK принадлежит другому приложению: ${archive.packageName}")
