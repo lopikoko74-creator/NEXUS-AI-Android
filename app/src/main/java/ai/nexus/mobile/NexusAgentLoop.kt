@@ -67,20 +67,21 @@ class NexusAgentLoop(
                 }
             }
 
-            when (val current = plan) {
-                is NexusAiPlan.Answer -> return NexusAgentResult.Completed(current.text, steps, observations)
-                is NexusAiPlan.Done -> return NexusAgentResult.Completed(current.summary, steps, observations)
-                is NexusAiPlan.Unsupported -> return NexusAgentResult.Unsupported(current.reason, observations)
+            val activePlan = plan ?: return NexusAgentResult.Failed("Модель не вернула план", observations)
+            when (activePlan) {
+                is NexusAiPlan.Answer -> return NexusAgentResult.Completed(activePlan.text, steps, observations)
+                is NexusAiPlan.Done -> return NexusAgentResult.Completed(activePlan.summary, steps, observations)
+                is NexusAiPlan.Unsupported -> return NexusAgentResult.Unsupported(activePlan.reason, observations)
                 else -> Unit
             }
 
-            val signature = signature(plan)
+            val signature = signature(activePlan)
             if (!seen.add(signature)) {
                 return NexusAgentResult.Failed("Модель повторяет уже предложенное действие; цикл остановлен", observations)
             }
 
             val outcome = try {
-                execute(plan, confirmed)
+                execute(activePlan, confirmed)
             } catch (error: Exception) {
                 NexusExecutionOutcome(false, "Ошибка исполнителя: \${error.message ?: "неизвестная ошибка"}")
             }
@@ -92,7 +93,7 @@ class NexusAgentLoop(
             }
 
             steps++
-            observations += "Step $steps / \${plan.javaClass.simpleName}: \${outcome.observation.take(400)}"
+            observations += "Step $steps / \${activePlan.javaClass.simpleName}: \${outcome.observation.take(400)}"
             if (outcome.success && outcome.taskCompleted) {
                 return NexusAgentResult.Completed(outcome.observation, steps, observations)
             }
