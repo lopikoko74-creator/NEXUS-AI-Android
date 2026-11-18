@@ -35,6 +35,7 @@ class NativeLlamaEngine private constructor(context: Context) {
     suspend fun loadModel(file: File): String = withContext(Dispatchers.IO) {
         check(file.isFile && file.canRead()) { "GGUF-файл недоступен для чтения" }
         initialize()
+        loadedModelPath = null
         val info = nativeLoadModel(file.absolutePath)
         loadedModelPath = file.absolutePath
         info
