@@ -214,6 +214,7 @@ class MainActivity : ComponentActivity() {
             var command by remember { mutableStateOf("") }
             var busy by remember { mutableStateOf(false) }
             var listening by remember { mutableStateOf(false) }
+            var wakeOverlay by remember { mutableStateOf(intent?.getBooleanExtra(EXTRA_WAKE_WORD_OPEN, false) == true) }
             var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
             var showUpdateSettings by remember { mutableStateOf(false) }
@@ -428,7 +429,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        NexusVoiceOrb(active = listening || busy)
+                        NexusVoiceOrb(active = listening || busy || wakeOverlay)
 
                         if (showUpdateSettings) {
                             NexusUpdatePanel()
