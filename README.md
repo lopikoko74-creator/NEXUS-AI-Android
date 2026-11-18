@@ -8,7 +8,7 @@
 - Выбор GGUF через Android Storage Access Framework.
 - Потоковый импорт GGUF в приватное хранилище с проверкой заголовка и свободного места.
 - Нативная сборка llama.cpp через CMake/NDK; исходник llama.cpp зафиксирован на commit `ad9d9e8f50e6ff9a6bfbbdd3aef6d74a8428cf4e`.
-- JNI bridge для инициализации llama.cpp, загрузки модели, получения её описания и выгрузки из RAM.
+- JNI bridge для инициализации llama.cpp, загрузки GGUF, локальной генерации токенов, применения GGUF chat template, JSON grammar-constrained decoding и выгрузки модели из RAM.
 - `VoiceAliasResolver`: нормализация разговорных названий и падежных форм приложений (например, «телега», «телегу», «телеграмм» → `Telegram`; «ватсап» → `WhatsApp`; «ютуб» → `YouTube`).
 - `AppCommandParser`: разбор ограниченных команд открытия приложений на русском языке.
 - `InstalledAppLauncher`: поиск установленных приложений по отображаемому имени и запуск через Android launcher intent.
@@ -20,7 +20,6 @@
 
 ## Пока не реализовано
 
-- Генерация токенов и полноценный чат-инференс поверх загруженной модели.
 - Wake-word detector «NEXUS».
 - Локальное распознавание речи (ASR) и синтез речи (TTS).
 - Подключение текстового парсера и словаря к ASR → разбор намерения → выбор приложения; сейчас парсер можно проверить вручную через поле команды.
@@ -47,13 +46,13 @@ LLM не получает доступ к произвольному shell-ко�
 
 When the deterministic command parser cannot resolve a request, NEXUS can pass it to the locally loaded GGUF model through llama.cpp. The model's own GGUF chat template is applied when available, and constrained decoding restricts output to the versioned JSON action schema.
 
-The agent uses a bounded observe-plan-act loop:
+The agent uses a bounded observe-plan-act loop (up to ten executed actions per task):
 1. Include the current visible accessibility labels as initial context.
 2. Ask the local model for one immediate typed action.
 3. Validate the JSON response and reject unknown action types or invalid parameters.
 4. Execute only allow-listed Android operations.
 5. Capture a bounded snapshot of the visible screen and feed the result back to the model.
-6. Re-plan after failures or intermediate steps, with duplicate-action detection and a six-step ceiling.
+6. Re-plan after failures or intermediate steps, with duplicate-action detection and a ten-step ceiling.
 7. Stop on completion, unsupported requests, invalid output after bounded repair attempts, or a required user confirmation.
 
 Supported model actions are opening an installed app, tapping an exact visible label, entering text into the focused editable field, going back, scrolling, waiting briefly for a screen transition, answering, and reporting completion/unsupported. Taps and text entry require explicit confirmation. Arbitrary shell commands, scripts, and unrestricted intents are never executable model actions. There are no dedicated send/call/delete/purchase tools; any UI sequence that could trigger an external or destructive effect can only proceed through visible, individually confirmed interactions.
