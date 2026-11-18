@@ -57,7 +57,7 @@ class NexusAgentLoop(
                     generate(NexusAiPlanner.buildPrompt(request, observations))
                 } catch (error: Exception) {
                     return NexusAgentResult.Failed(
-                        "Локальная модель не смогла построить план: \${error.message ?: "ошибка генерации"}",
+                        "Локальная модель не смогла построить план: ${error.message ?: "ошибка генерации"}",
                         observations
                     )
                 }
@@ -83,17 +83,17 @@ class NexusAgentLoop(
             val outcome = try {
                 execute(activePlan, confirmed)
             } catch (error: Exception) {
-                NexusExecutionOutcome(false, "Ошибка исполнителя: \${error.message ?: "неизвестная ошибка"}")
+                NexusExecutionOutcome(false, "Ошибка исполнителя: ${error.message ?: "неизвестная ошибка"}")
             }
             if (outcome.requiresConfirmation && !confirmed) {
                 return NexusAgentResult.AwaitingConfirmation(
-                    NexusPendingConfirmation(request, plan, observations.toList(), steps),
+                    NexusPendingConfirmation(request, activePlan, observations.toList(), steps),
                     outcome.observation
                 )
             }
 
             steps++
-            observations += "Step $steps / \${activePlan.javaClass.simpleName}: \${outcome.observation.take(400)}"
+            observations += "Step $steps / ${activePlan.javaClass.simpleName}: ${outcome.observation.take(400)}"
             if (outcome.success && outcome.taskCompleted) {
                 return NexusAgentResult.Completed(outcome.observation, steps, observations)
             }
@@ -105,12 +105,12 @@ class NexusAgentLoop(
     }
 
     private fun signature(plan: NexusAiPlan): String = when (plan) {
-        is NexusAiPlan.OpenApp -> "OPEN_APP:\${plan.appName.lowercase()}"
-        is NexusAiPlan.TapText -> "TAP_TEXT:\${plan.exactLabel.lowercase()}"
-        is NexusAiPlan.EnterText -> "ENTER_TEXT:\${plan.text}"
+        is NexusAiPlan.OpenApp -> "OPEN_APP:${plan.appName.lowercase()}"
+        is NexusAiPlan.TapText -> "TAP_TEXT:${plan.exactLabel.lowercase()}"
+        is NexusAiPlan.EnterText -> "ENTER_TEXT:${plan.text}"
         NexusAiPlan.GoBack -> "GO_BACK"
-        is NexusAiPlan.Answer -> "ANSWER:\${plan.text}"
-        is NexusAiPlan.Done -> "DONE:\${plan.summary}"
-        is NexusAiPlan.Unsupported -> "UNSUPPORTED:\${plan.reason}"
+        is NexusAiPlan.Answer -> "ANSWER:${plan.text}"
+        is NexusAiPlan.Done -> "DONE:${plan.summary}"
+        is NexusAiPlan.Unsupported -> "UNSUPPORTED:${plan.reason}"
     }
 }
