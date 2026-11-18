@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -70,6 +71,19 @@ class MainActivity : ComponentActivity() {
                             NexusExecutionOutcome(ok, if (ok) "Text entered. Screen: ${service.describeActiveWindow()}" else "Text entry failed. Screen: ${service.describeActiveWindow()}")
                         }
                     }
+                    is NexusAiPlan.Scroll -> {
+                        val service = NexusAccessibilityService.current
+                        if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        else {
+                            val forward = plan.direction == "FORWARD"
+                            val ok = service.executeApprovedAction(NexusAction.Scroll(forward), true)
+                            NexusExecutionOutcome(ok, if (ok) "Scrolled ${plan.direction.lowercase()}. Screen: ${service.describeActiveWindow()}" else "Scroll action failed.")
+                        }
+                    }
+                    is NexusAiPlan.Wait -> {
+                        delay(plan.milliseconds.toLong())
+                        NexusExecutionOutcome(true, "Waited ${plan.milliseconds} ms. Screen: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."}")
+                    }
                     NexusAiPlan.GoBack -> {
                         val service = NexusAccessibilityService.current
                         if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
@@ -92,7 +106,8 @@ class MainActivity : ComponentActivity() {
             onResult(NexusAgentResult.Failed("Неизвестная команда. Сначала загрузи локальную GGUF-модель.", emptyList()))
             return
         }
-        lifecycleScope.launch { onResult(createAgentLoop().run(request)) }
+        val screen = NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."
+        lifecycleScope.launch { onResult(createAgentLoop().run(request, listOf("Initial screen: $screen"))) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
