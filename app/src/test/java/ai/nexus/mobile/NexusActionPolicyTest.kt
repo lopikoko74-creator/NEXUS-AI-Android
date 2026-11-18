@@ -8,6 +8,7 @@ class NexusActionPolicyTest {
     @Test
     fun navigationActionsDoNotRequireConfirmation() {
         assertTrue(NexusActionPolicy.mayExecute(NexusAction.GoBack, false))
+        assertTrue(NexusActionPolicy.mayExecute(NexusAction.Scroll(true), false))
         assertTrue(NexusActionPolicy.mayExecute(NexusAction.OpenAccessibilitySettings, false))
     }
 
