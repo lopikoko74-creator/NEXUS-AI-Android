@@ -33,6 +33,22 @@ class NexusAiPlannerTest {
     }
 
     @Test
+    fun parsesScrollAndBoundedWaitActions() {
+        assertEquals(
+            NexusPlanParseResult.Valid(NexusAiPlan.Scroll("FORWARD")),
+            NexusAiPlanner.parse("""{"version":1,"action":"SCROLL","args":{"direction":"forward"}}""")
+        )
+        assertEquals(
+            NexusPlanParseResult.Valid(NexusAiPlan.Wait(750)),
+            NexusAiPlanner.parse("""{"version":1,"action":"WAIT","args":{"milliseconds":750}}""")
+        )
+        assertTrue(
+            NexusAiPlanner.parse("""{"version":1,"action":"WAIT","args":{"milliseconds":9000}}""")
+                is NexusPlanParseResult.Invalid
+        )
+    }
+
+    @Test
     fun parsesAnswerAndUnsupportedPlans() {
         assertEquals(
             NexusPlanParseResult.Valid(NexusAiPlan.Answer("Привет")),
