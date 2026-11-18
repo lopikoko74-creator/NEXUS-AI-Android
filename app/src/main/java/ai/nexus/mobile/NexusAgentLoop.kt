@@ -50,6 +50,7 @@ class NexusAgentLoop(
         var steps = initialSteps
         var plan = firstPlan
         var confirmed = firstPlanConfirmed
+        var parseRetries = 0
 
         while (steps < maxSteps) {
             if (plan == null) {
@@ -61,9 +62,17 @@ class NexusAgentLoop(
                         observations
                     )
                 }
-                plan = when (val parsed = NexusAiPlanner.parse(raw)) {
-                    is NexusPlanParseResult.Valid -> parsed.plan
-                    is NexusPlanParseResult.Invalid -> return NexusAgentResult.Failed(parsed.reason, observations)
+                when (val parsed = NexusAiPlanner.parse(raw)) {
+                    is NexusPlanParseResult.Valid -> {
+                        plan = parsed.plan
+                        parseRetries = 0
+                    }
+                    is NexusPlanParseResult.Invalid -> {
+                        if (parseRetries >= 2) return NexusAgentResult.Failed(parsed.reason, observations)
+                        observations += "Planner output rejected: ${parsed.reason}. Retry with exactly one valid JSON action."
+                        parseRetries++
+                        continue
+                    }
                 }
             }
 
