@@ -238,7 +238,9 @@ class MainActivity : ComponentActivity() {
             var wakeOverlay by remember { mutableStateOf(intent?.getBooleanExtra(EXTRA_WAKE_WORD_OPEN, false) == true) }
             var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
-            var showUpdateSettings by remember { mutableStateOf(false) }\n            var showDiagnostics by remember { mutableStateOf(false) }\n            var diagnosticsText by remember { mutableStateOf("") }
+            var showUpdateSettings by remember { mutableStateOf(false) }
+            var showDiagnostics by remember { mutableStateOf(false) }
+            var diagnosticsText by remember { mutableStateOf("") }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var chatLines by remember {
                 mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
@@ -314,7 +316,8 @@ class MainActivity : ComponentActivity() {
                                 if (spoken.isNotBlank()) submitRequest(spoken)
                             }
                             NexusWakeWordService.ACTION_STATUS ->
-                                voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()\n                                NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
+                                voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()
+                                NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
                         }
                     }
                 }
@@ -357,10 +360,12 @@ class MainActivity : ComponentActivity() {
                         listening = false
                         val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                         if (spoken.isNotBlank()) {
-                            voiceStatus = "Распознано: $spoken"\n                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано: $spoken")
+                            voiceStatus = "Распознано: $spoken"
+                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано: $spoken")
                             submitRequest(spoken)
                         } else {
-                            voiceStatus = "Речь не распознана. Повтори команду."\n                            NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
+                            voiceStatus = "Речь не распознана. Повтори команду."
+                            NexusDiagnostics.record(this@MainActivity, "VOICE", voiceStatus)
                         }
                     }
                     override fun onPartialResults(partialResults: Bundle?) {
