@@ -1,0 +1,72 @@
+package ai.nexus.mobile
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class NexusAiPlannerTest {
+    @Test
+    fun promptRequestsSingleTypedActionAndForbidsCode() {
+        val prompt = NexusAiPlanner.buildPrompt("Открой телегу")
+        assertTrue(prompt.contains("exactly one JSON object"))
+        assertTrue(prompt.contains("shell commands"))
+        assertTrue(prompt.contains("Открой телегу"))
+    }
+
+    @Test
+    fun parsesSupportedOpenAppPlan() {
+        val result = NexusAiPlanner.parse(
+            """{"version":1,"action":"OPEN_APP","args":{"app_name":"Telegram"}}"""
+        )
+        assertEquals(
+            NexusPlanParseResult.Valid(NexusAiPlan.OpenApp("Telegram")),
+            result
+        )
+    }
+
+    @Test
+    fun parsesAnswerAndUnsupportedPlans() {
+        assertEquals(
+            NexusPlanParseResult.Valid(NexusAiPlan.Answer("Привет")),
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"ANSWER","args":{"text":"Привет"}}"""
+            )
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"UNSUPPORTED","args":{"reason":"Нет разрешения"}}"""
+            ) is NexusPlanParseResult.Valid
+        )
+    }
+
+    @Test
+    fun rejectsUnknownActionsMalformedJsonAndInvalidArguments() {
+        assertTrue(NexusAiPlanner.parse("not json") is NexusPlanParseResult.Invalid)
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"RUN_SHELL","args":{"command":"rm -rf /"}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"OPEN_APP","args":{"app_name":" "}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":2,"action":"GO_BACK","args":{}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+    }
+
+    @Test
+    fun rejectsOversizedOutputAndFields() {
+        assertTrue(NexusAiPlanner.parse("x".repeat(4097)) is NexusPlanParseResult.Invalid)
+        val longName = "a".repeat(513)
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"OPEN_APP","args":{"app_name":"$longName"}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+    }
+}
