@@ -47,9 +47,9 @@ class NativeLlamaEngine private constructor(context: Context) {
      */
     suspend fun generate(prompt: String, maxTokens: Int = 384): String = withContext(Dispatchers.IO) {
         require(prompt.isNotBlank()) { "Пустой запрос к модели" }
-        require(prompt.length <= 12_000) { "Запрос слишком длинный для локального контекста" }
+        require(prompt.length <= 8_000) { "Запрос слишком длинный для локального контекста (лимит 8000 символов)" }
         check(loadedModelPath != null) { "Сначала загрузи локальную GGUF-модель" }
-        nativeGenerate(prompt, maxTokens.coerceIn(16, 512)).trim()
+        nativeGenerate(prompt, maxTokens.coerceIn(16, 160)).trim()
     }
 
     suspend fun unloadModel() = withContext(Dispatchers.IO) {
