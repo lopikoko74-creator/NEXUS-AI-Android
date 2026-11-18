@@ -7,6 +7,7 @@ import android.os.Build
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
@@ -67,6 +68,7 @@ private data class ChatLine(
 )
 
 class MainActivity : ComponentActivity() {
+    private var textToSpeech: TextToSpeech? = null
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
         return NexusAgentLoop(
@@ -158,6 +160,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        textToSpeech = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                textToSpeech?.language = Locale("ru", "RU")
+                textToSpeech?.setSpeechRate(1.0f)
+            }
+        }
         val prefs = getSharedPreferences("nexus_settings", MODE_PRIVATE)
         setContent {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
@@ -197,15 +205,16 @@ class MainActivity : ComponentActivity() {
 
             fun finishAgent(result: NexusAgentResult) {
                 busy = false
-                when (result) {
-                    is NexusAgentResult.Completed -> addLine(ChatRole.ASSISTANT, "Готово", result.summary)
-                    is NexusAgentResult.Unsupported -> addLine(ChatRole.ASSISTANT, "Не могу выполнить задачу", result.reason)
-                    is NexusAgentResult.Failed -> addLine(ChatRole.ASSISTANT, "Задача остановлена", result.reason)
+                val spokenReply = when (result) {
+                    is NexusAgentResult.Completed -> result.summary.also { addLine(ChatRole.ASSISTANT, "Готово", it) }
+                    is NexusAgentResult.Unsupported -> result.reason.also { addLine(ChatRole.ASSISTANT, "Не могу выполнить задачу", it) }
+                    is NexusAgentResult.Failed -> result.reason.also { addLine(ChatRole.ASSISTANT, "Задача остановлена", it) }
                     is NexusAgentResult.AwaitingConfirmation -> {
                         pendingConfirmation = result.pending
-                        addLine(ChatRole.ASSISTANT, "Требуется подтверждение", result.explanation)
+                        result.explanation.also { addLine(ChatRole.ASSISTANT, "Требуется подтверждение", it) }
                     }
                 }
+                textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
             }
 
             fun submitRequest(rawRequest: String) {
@@ -500,6 +509,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+    override fun onDestroy() {
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
+        super.onDestroy()
     }
 }
 
