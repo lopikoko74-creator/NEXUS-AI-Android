@@ -1,6 +1,7 @@
 package ai.nexus.mobile
 
 import android.content.Intent
+import android.content.IntentFilter
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -84,6 +85,7 @@ private data class ChatLine(
 )
 
 class MainActivity : ComponentActivity() {
+    companion object { const val EXTRA_WAKE_WORD_OPEN = "nexus_wake_word_open" }
     private var textToSpeech: TextToSpeech? = null
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
@@ -272,6 +274,27 @@ class MainActivity : ComponentActivity() {
             }
 
 
+            DisposableEffect(Unit) {
+                val receiver = object : android.content.BroadcastReceiver() {
+                    override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                        when (intent?.action) {
+                            NexusWakeWordService.ACTION_COMMAND -> {
+                                val spoken = intent.getStringExtra(NexusWakeWordService.EXTRA_COMMAND).orEmpty()
+                                if (spoken.isNotBlank()) submitRequest(spoken)
+                            }
+                            NexusWakeWordService.ACTION_STATUS ->
+                                voiceStatus = intent.getStringExtra(NexusWakeWordService.EXTRA_STATUS).orEmpty()
+                        }
+                    }
+                }
+                val filter = IntentFilter().apply {
+                    addAction(NexusWakeWordService.ACTION_COMMAND)
+                    addAction(NexusWakeWordService.ACTION_STATUS)
+                }
+                ContextCompat.registerReceiver(this@MainActivity, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
+                onDispose { try { unregisterReceiver(receiver) } catch (_: Exception) {} }
+            }
+
             val speechRecognizer = remember {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                     SpeechRecognizer.isOnDeviceRecognitionAvailable(this@MainActivity)) {
@@ -457,6 +480,19 @@ class MainActivity : ComponentActivity() {
                                     }
                                     OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                         Text("Настройки специальных возможностей")
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = {
+                                            if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                                                val serviceIntent = Intent(this@MainActivity, NexusWakeWordService::class.java).setAction(NexusWakeWordService.ACTION_START)
+                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent) else startService(serviceIntent)
+                                                voiceStatus = "Фоновое ожидание включено. Скажи «Нексус»."
+                                            } else microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                                        }) { Text("Включить «Нексус»") }
+                                        OutlinedButton(onClick = {
+                                            startService(Intent(this@MainActivity, NexusWakeWordService::class.java).setAction(NexusWakeWordService.ACTION_STOP))
+                                            voiceStatus = "Голосовое ожидание остановлено."
+                                        }) { Text("Выключить") }
                                     }
                                 }
                             }
