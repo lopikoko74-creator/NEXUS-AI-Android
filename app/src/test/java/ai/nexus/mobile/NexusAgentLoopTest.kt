@@ -77,6 +77,26 @@ class NexusAgentLoopTest {
     }
 
     @Test
+    fun preventsRepeatingConfirmedActionAfterResume() = runBlocking {
+        var generation = 0
+        val loop = NexusAgentLoop(
+            generate = {
+                generation++
+                """{"version":1,"action":"TAP_TEXT","args":{"label":"Отправить"}}"""
+            },
+            execute = { _, approved ->
+                if (approved) NexusExecutionOutcome(true, "Tapped", taskCompleted = false)
+                else NexusExecutionOutcome(false, "Tap requires approval", requiresConfirmation = true)
+            }
+        )
+        val first = loop.run("Выполни действие")
+        assertTrue(first is NexusAgentResult.AwaitingConfirmation)
+        val resumed = loop.resume((first as NexusAgentResult.AwaitingConfirmation).pending)
+        assertTrue(resumed is NexusAgentResult.Failed)
+        assertEquals(2, generation)
+    }
+
+    @Test
     fun retriesMalformedPlannerOutputBeforeStopping() = runBlocking {
         var generation = 0
         val loop = NexusAgentLoop(
