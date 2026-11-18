@@ -37,9 +37,12 @@ def status():
     paths = ["/"] if os.name != "nt" else [os.environ.get("SystemDrive", "C:") + "\\"]
     if psutil:
         try:
-            disks = [{"mount": p.mountpoint, "total": p.total, "used": p.used, "free": p.free}
-                     for p in psutil.disk_partitions(all=False)
-                     for p in [psutil.disk_usage(p.mountpoint)] if p.fstype]
+            for part in psutil.disk_partitions(all=False):
+                try:
+                    usage = psutil.disk_usage(part.mountpoint)
+                    disks.append({"mount": part.mountpoint, "total": usage.total, "used": usage.used, "free": usage.free})
+                except (OSError, PermissionError):
+                    continue
         except Exception:
             disks = []
     if not disks:
