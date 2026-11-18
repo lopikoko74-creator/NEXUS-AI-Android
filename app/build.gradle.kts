@@ -77,6 +77,19 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 
+// A distributable release must always use the same persistent signing identity.
+// Never publish an unsigned release: Android will reject it as an update to a
+// previously installed signed build, or require uninstalling the existing app.
+tasks.matching { it.name == "assembleRelease" }.configureEach {
+    doFirst {
+        check(hasReleaseSigning) {
+            "NEXUS release APK cannot be built without the persistent NEXUS signing key. " +
+                "Configure NEXUS_KEYSTORE_BASE64, NEXUS_STORE_PASSWORD, " +
+                "NEXUS_KEY_ALIAS and NEXUS_KEY_PASSWORD."
+        }
+    }
+}
+
 dependencies {
     implementation(platform("androidx.compose:compose-bom:2025.05.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
