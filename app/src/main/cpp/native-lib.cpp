@@ -236,6 +236,11 @@ ws ::= [ \t\n\r]*
     int32_t position = prompt_count;
     for (int step = 0; step < token_limit; ++step) {
         token = llama_sampler_sample(sampler, g_context, -1);
+        if (token == LLAMA_TOKEN_NULL) {
+            llama_sampler_free(sampler);
+            throw_java(env, "java/lang/IllegalStateException", "llama.cpp sampler returned an invalid token");
+            return nullptr;
+        }
         if (llama_vocab_is_eog(vocab, token)) break;
 
         char piece[8192];
@@ -246,6 +251,11 @@ ws ::= [ \t\n\r]*
             if (piece_size > 0) output.append(larger.data(), static_cast<size_t>(piece_size));
         } else if (piece_size > 0) {
             output.append(piece, static_cast<size_t>(piece_size));
+        }
+        if (output.size() > 16384) {
+            llama_sampler_free(sampler);
+            throw_java(env, "java/lang/IllegalStateException", "Generated JSON response exceeded the native output limit");
+            return nullptr;
         }
 
         if (position >= 2047) break;
