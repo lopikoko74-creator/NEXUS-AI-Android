@@ -32,6 +32,9 @@ class NexusAccessibilityService : AccessibilityService() {
                 true
             }
             NexusAction.GoBack -> performGlobalAction(GLOBAL_ACTION_BACK)
+            is NexusAction.Scroll -> performGlobalAction(
+                if (action.forward) GLOBAL_ACTION_SCROLL_FORWARD else GLOBAL_ACTION_SCROLL_BACKWARD
+            )
             is NexusAction.TapVisibleText -> clickVisibleText(action.exactLabel)
             is NexusAction.EnterText -> setTextOnFocusedNode(action.text)
             is NexusAction.SendMessage,
