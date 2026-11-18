@@ -84,6 +84,25 @@ class NexusAiPlannerTest {
     }
 
     @Test
+    fun rejectsUnexpectedArgumentsAndCoercedTypes() {
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"GO_BACK","args":{"shell":"ignored"}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"WAIT","args":{"milliseconds":"750"}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"OPEN_APP","args":{"app_name":42}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+    }
+
+    @Test
     fun rejectsOversizedOutputAndFields() {
         assertTrue(NexusAiPlanner.parse("x".repeat(4097)) is NexusPlanParseResult.Invalid)
         val longName = "a".repeat(513)
