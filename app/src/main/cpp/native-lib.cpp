@@ -77,7 +77,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
     context_params.n_batch = 2048;
     context_params.n_ubatch = 512;
     const unsigned int hardware_threads = std::thread::hardware_concurrency();
-    const int inference_threads = static_cast<int>(std::max(2u, std::min(6u, hardware_threads == 0 ? 4u : hardware_threads)));
+    const int inference_threads = static_cast<int>(std::max(2u, std::min(4u, hardware_threads == 0 ? 4u : hardware_threads)));
     context_params.n_threads = inference_threads;
     context_params.n_threads_batch = inference_threads;
     context_params.no_perf = true;
@@ -111,7 +111,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
         throw_java(env, "java/lang/IllegalArgumentException", "Prompt must contain 1..24000 UTF-8 bytes");
         return nullptr;
     }
-    const int token_limit = std::max(16, std::min(static_cast<int>(max_tokens), 512));
+    const int token_limit = std::max(16, std::min(static_cast<int>(max_tokens), 160));
 
     std::lock_guard<std::mutex> lock(g_mutex);
     if (g_model == nullptr || g_context == nullptr) {
