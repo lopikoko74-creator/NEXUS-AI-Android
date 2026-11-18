@@ -47,7 +47,7 @@ jobs:
           NEXUS_STORE_PASSWORD: ${{ secrets.NEXUS_STORE_PASSWORD }}
           NEXUS_KEY_ALIAS: ${{ secrets.NEXUS_KEY_ALIAS }}
           NEXUS_KEY_PASSWORD: ${{ secrets.NEXUS_KEY_PASSWORD }}
-          NEXUS_VERSION_CODE: ${{ 10000 + github.run_number }}
+          NEXUS_VERSION_CODE: ${{ format('1{0}', github.run_number) }}
           NEXUS_VERSION_NAME: 0.5.${{ github.run_number }}
         run: gradle --no-daemon :app:assembleRelease
 
