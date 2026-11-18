@@ -86,6 +86,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private fun runAgentFallback(request: String, onResult: (NexusAgentResult) -> Unit) {
+        val engine = NativeLlamaEngine.getInstance(this)
+        if (!engine.isModelLoaded()) {
+            onResult(NexusAgentResult.Failed("Неизвестная команда. Сначала загрузи локальную GGUF-модель.", emptyList()))
+            return
+        }
+        lifecycleScope.launch { onResult(createAgentLoop().run(request)) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("nexus_settings", MODE_PRIVATE)
@@ -167,20 +176,15 @@ class MainActivity : ComponentActivity() {
                                 Button(onClick = {
                                     val parsed = AppCommandParser.parse(appCommand)
                                     if (parsed == null) {
-                                        val engine = NativeLlamaEngine.getInstance(this@MainActivity)
-                                        if (!engine.isModelLoaded()) {
-                                            appCommandStatus = "Команда неизвестна. Для разбора через локальную ИИ-модель сначала загрузи GGUF."
-                                        } else {
-                                            appCommandStatus = "NEXUS передаёт неизвестную команду локальной модели…"
-                                            this@MainActivity.lifecycleScope.launch {
-                                                when (val result = createAgentLoop().run(appCommand)) {
-                                                    is NexusAgentResult.Completed -> appCommandStatus = result.summary
-                                                    is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${result.reason}"
-                                                    is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
-                                                    is NexusAgentResult.AwaitingConfirmation -> {
-                                                        pendingConfirmation = result.pending
-                                                        appCommandStatus = result.explanation
-                                                    }
+                                        appCommandStatus = "NEXUS передаёт неизвестную команду локальной модели…"
+                                        runAgentFallback(appCommand) { result ->
+                                            when (result) {
+                                                is NexusAgentResult.Completed -> appCommandStatus = result.summary
+                                                is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${result.reason}"
+                                                is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
+                                                is NexusAgentResult.AwaitingConfirmation -> {
+                                                    pendingConfirmation = result.pending
+                                                    appCommandStatus = result.explanation
                                                 }
                                             }
                                         }
@@ -188,8 +192,20 @@ class MainActivity : ComponentActivity() {
                                         when (val result = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
                                             is InstalledAppLauncher.Result.Launched ->
                                                 appCommandStatus = "Запускаю: ${result.appLabel}"
-                                            is InstalledAppLauncher.Result.NotFound ->
-                                                appCommandStatus = "Приложение не найдено среди установленных: ${result.requestedName}"
+                                            is InstalledAppLauncher.Result.NotFound -> {
+                                                appCommandStatus = "Приложение не найдено. Передаю полную команду локальной модели…"
+                                                runAgentFallback(appCommand) { agentResult ->
+                                                    when (agentResult) {
+                                                        is NexusAgentResult.Completed -> appCommandStatus = agentResult.summary
+                                                        is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${agentResult.reason}"
+                                                        is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${agentResult.reason}"
+                                                        is NexusAgentResult.AwaitingConfirmation -> {
+                                                            pendingConfirmation = agentResult.pending
+                                                            appCommandStatus = agentResult.explanation
+                                                        }
+                                                    }
+                                                }
+                                            }
                                             is InstalledAppLauncher.Result.Failed ->
                                                 appCommandStatus = "Не удалось запустить: ${result.reason}"
                                         }
