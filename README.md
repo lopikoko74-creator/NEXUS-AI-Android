@@ -58,3 +58,8 @@ The agent uses a bounded observe-plan-act loop (up to ten executed actions per t
 Supported model actions are opening an installed app, tapping an exact visible label, entering text into the focused editable field, going back, scrolling, waiting briefly for a screen transition, answering, and reporting completion/unsupported. Taps and text entry require explicit confirmation. Arbitrary shell commands, scripts, and unrestricted intents are never executable model actions. There are no dedicated send/call/delete/purchase tools; any UI sequence that could trigger an external or destructive effect can only proceed through visible, individually confirmed interactions.
 
 Inference runs on-device. No cloud inference endpoint is configured or required. Model loading remains a deliberate user action because GGUF files can consume several gigabytes of memory. Device-side performance and actual model compatibility still require testing on the target phone.
+
+
+## NEXUS CONTROL — PC dashboard
+
+A separate cross-platform PC dashboard project is available in [`nexus-control/`](nexus-control/README.md). It provides a local Windows 10 / Ubuntu agent, authenticated system telemetry, confirmed power controls, and an Android USB connection using ADB reverse. The GRUB dual-boot menu is supplied as a hardware-specific template and must be adapted to the PC's EFI layout before installation.
