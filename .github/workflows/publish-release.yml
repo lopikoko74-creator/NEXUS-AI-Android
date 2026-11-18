@@ -1,0 +1,53 @@
+name: Publish NEXUS AI Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install Android SDK, NDK and CMake
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.2.12479018" "cmake;3.22.1"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Require persistent release signing secrets
+        env:
+          NEXUS_KEYSTORE_BASE64: ${{ secrets.NEXUS_KEYSTORE_BASE64 }}
+          NEXUS_STORE_PASSWORD: ${{ secrets.NEXUS_STORE_PASSWORD }}
+          NEXUS_KEY_ALIAS: ${{ secrets.NEXUS_KEY_ALIAS }}
+          NEXUS_KEY_PASSWORD: ${{ secrets.NEXUS_KEY_PASSWORD }}
+        run: |
+          test -n "$NEXUS_KEYSTORE_BASE64"
+          test -n "$NEXUS_STORE_PASSWORD"
+          test -n "$NEXUS_KEY_ALIAS"
+          test -n "$NEXUS_KEY_PASSWORD"
+      - name: Run unit tests
+        run: gradle --no-daemon :app:testDebugUnitTest
+      - name: Build signed release APK
+        env:
+          NEXUS_KEYSTORE_BASE64: ${{ secrets.NEXUS_KEYSTORE_BASE64 }}
+          NEXUS_STORE_PASSWORD: ${{ secrets.NEXUS_STORE_PASSWORD }}
+          NEXUS_KEY_ALIAS: ${{ secrets.NEXUS_KEY_ALIAS }}
+          NEXUS_KEY_PASSWORD: ${{ secrets.NEXUS_KEY_PASSWORD }}
+        run: gradle --no-daemon :app:assembleRelease
+      - name: Publish APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: app/build/outputs/apk/release/app-release.apk
