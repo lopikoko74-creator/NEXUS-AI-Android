@@ -80,7 +80,7 @@ class NexusAgentLoop(
             when (activePlan) {
                 is NexusAiPlan.Answer -> return NexusAgentResult.Completed(activePlan.text, steps, observations)
                 is NexusAiPlan.Done -> {
-                    if (observations.none { it.contains("result=SUCCESS") }) {
+                    if (observations.none { it.contains("result=SUCCESS") && !it.contains("/ Wait /") }) {
                         return NexusAgentResult.Failed("Модель заявила о завершении без подтверждённого успешного действия", observations)
                     }
                     return NexusAgentResult.Completed(activePlan.summary, steps, observations)
