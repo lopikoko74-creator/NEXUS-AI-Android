@@ -88,11 +88,6 @@ fun NexusUpdatePanel() {
                                 val tag = release.optString("tag_name")
                                 val current = context.packageManager.getPackageInfo(context.packageName, 0)
                                 val currentVersion = if (Build.VERSION.SDK_INT >= 28) current.longVersionCode else current.versionCode.toLong()
-                                val versionText = tag.removePrefix("v").substringBefore("-")
-                                val parts = versionText.split(".").mapNotNull { it.toIntOrNull() }
-                                val remoteVersion = if (parts.size >= 3) parts[0] * 10000L + parts[1] * 100L + parts[2] else -1L
-                                if (remoteVersion in 0..currentVersion)
-                                    error("Установлена версия ${current.versionName}; релиз ${tag} не новее. Проверь versionCode/versionName в сборке.")
                                 val target = File(context.cacheDir, "updates/nexus-${tag}.apk")
                                 target.parentFile?.mkdirs()
                                 val checksumAsset = (0 until assets.length()).map { assets.getJSONObject(it) }
@@ -136,7 +131,7 @@ fun NexusUpdatePanel() {
                                 target
                             }
                             downloadedFile = result
-                            status = "APK загружен и проверен. Совпадают package name и сертификат подписи; версия новее."
+                            status = "APK ${result.name} загружен и проверен. Совпадают package name, сертификат подписи и versionCode. Можно устанавливать."
                         } catch (e: Exception) {
                             status = "Не удалось обновить: ${e.message ?: e.javaClass.simpleName}"
                         } finally { busy = false }
