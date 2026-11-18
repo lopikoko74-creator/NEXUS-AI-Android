@@ -31,15 +31,6 @@ object InstalledAppLauncher {
             }
             .sortedBy { (_, label, _) -> label.length }
             .firstOrNull { (_, _, label) -> label.equals(wanted, ignoreCase = true) }
-            ?: candidates.mapNotNull { resolveInfo ->
-                val appInfo = resolveInfo.activityInfo?.applicationInfo ?: return@mapNotNull null
-                val label = activity.packageManager.getApplicationLabel(appInfo).toString()
-                Triple(resolveInfo, label, VoiceAliasResolver.normalize(label).trim())
-            }.sortedBy { (_, label, _) -> label.length }
-                .firstOrNull { (_, _, label) ->
-                    label.startsWith(wanted, ignoreCase = true) ||
-                        wanted.startsWith(label, ignoreCase = true)
-                }
 
         if (match == null) return Result.NotFound(wanted)
         val packageName = match.first.activityInfo?.packageName
