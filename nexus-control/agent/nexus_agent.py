@@ -13,6 +13,10 @@ try:
     import psutil
 except Exception:
     psutil = None
+try:
+    import pyautogui
+except Exception:
+    pyautogui = None
 
 def token():
     value = os.environ.get("NEXUS_TOKEN")
@@ -94,6 +98,42 @@ def action(name, value=None):
         raise RuntimeError((result.stderr or result.stdout or "Command failed").strip())
     return {"ok": True, "message": name + " accepted"}
 
+def input_action(body):
+    if pyautogui is None:
+        raise ValueError("Input control unavailable: install pyautogui and ensure an active desktop session")
+    kind = str(body.get("type", ""))
+    if kind == "move":
+        dx = max(-500, min(500, int(body.get("dx", 0))))
+        dy = max(-500, min(500, int(body.get("dy", 0))))
+        x, y = pyautogui.position()
+        pyautogui.moveTo(max(0, x + dx), max(0, y + dy), duration=0)
+    elif kind == "click":
+        button = str(body.get("button", "left"))
+        if button not in ("left", "right", "middle"): raise ValueError("Invalid mouse button")
+        pyautogui.click(button=button)
+    elif kind == "scroll":
+        amount = max(-10, min(10, int(body.get("amount", 0))))
+        pyautogui.scroll(amount)
+    elif kind == "type":
+        value = str(body.get("text", ""))
+        if len(value) > 500: raise ValueError("Text is too long")
+        pyautogui.write(value, interval=0.01)
+    elif kind == "hotkey":
+        allowed = {
+            "alt_tab": ("alt", "tab"), "win_d": ("win", "d"),
+            "ctrl_c": ("ctrl", "c"), "ctrl_v": ("ctrl", "v"),
+            "ctrl_z": ("ctrl", "z"), "ctrl_s": ("ctrl", "s"),
+            "ctrl_shift_esc": ("ctrl", "shift", "esc"),
+            "alt_f4": ("alt", "f4"), "enter": ("enter",),
+            "escape": ("esc",),
+        }
+        combo = str(body.get("combo", ""))
+        if combo not in allowed: raise ValueError("Shortcut not allowed")
+        pyautogui.hotkey(*allowed[combo])
+    else:
+        raise ValueError("Input action not allowed")
+    return {"ok": True, "message": "Input sent"}
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "NEXUS-Control/0.1"
     def log_message(self, fmt, *args):
@@ -116,15 +156,22 @@ class Handler(BaseHTTPRequestHandler):
             try: return self.send(200, status())
             except Exception as e: return self.send(500, {"error":str(e)})
         if path == "/api/health": return self.send(200, {"ok":True,"agent":"NEXUS CONTROL"})
+        if path == "/api/screenshot":
+            if pyautogui is None: return self.send(501, {"error":"Install pyautogui and use an active desktop session"})
+            import io
+            buffer = io.BytesIO()
+            pyautogui.screenshot().save(buffer, format="PNG")
+            return self.send(200, buffer.getvalue(), "image/png")
         return self.send(404, {"error":"Not found"})
     def do_POST(self):
         if not self.authorized(): return self.send(401, {"error":"Unauthorized"})
-        if urlparse(self.path).path != "/api/action": return self.send(404, {"error":"Not found"})
+        path = urlparse(self.path).path
+        if path not in ("/api/action", "/api/input"): return self.send(404, {"error":"Not found"})
         try:
             n = int(self.headers.get("Content-Length", "0"))
-            if n > 2048: return self.send(413, {"error":"Request too large"})
+            if n > 4096: return self.send(413, {"error":"Request too large"})
             body = json.loads(self.rfile.read(n) or b"{}")
-            result = action(str(body.get("action", "")), body.get("value"))
+            result = input_action(body) if path == "/api/input" else action(str(body.get("action", "")), body.get("value"))
             return self.send(200, result)
         except Exception as e:
             return self.send(400, {"error":str(e)})
