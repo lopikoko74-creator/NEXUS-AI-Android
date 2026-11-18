@@ -12,6 +12,20 @@ object InstalledAppLauncher {
     }
 
     @Suppress("DEPRECATION")
+    fun listLaunchableApps(activity: Activity, limit: Int = 100): List<String> {
+        val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return activity.packageManager.queryIntentActivities(query, PackageManager.MATCH_ALL)
+            .mapNotNull { info ->
+                val appInfo = info.activityInfo?.applicationInfo ?: return@mapNotNull null
+                activity.packageManager.getApplicationLabel(appInfo).toString().trim()
+                    .takeIf { it.isNotEmpty() }
+            }
+            .distinctBy { VoiceAliasResolver.normalize(it).lowercase() }
+            .sortedBy { it.lowercase() }
+            .take(limit.coerceIn(1, 150))
+    }
+
+    @Suppress("DEPRECATION")
     fun launch(activity: Activity, requestedName: String): Result {
         val wanted = VoiceAliasResolver.normalize(requestedName).trim()
         if (wanted.isBlank()) return Result.Failed("Не указано приложение")
