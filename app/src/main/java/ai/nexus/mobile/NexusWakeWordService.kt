@@ -30,6 +30,8 @@ class NexusWakeWordService : Service() {
     private var restartScheduled = false
     private var consecutiveErrors = 0
     private var finalResultPending = false
+    private var sessionResolved = false
+    private var latestPartial = ""
 
     override fun onCreate() {
         super.onCreate()
@@ -99,7 +101,7 @@ class NexusWakeWordService : Service() {
             handler.postDelayed(finalResultWatchdog, FINAL_RESULT_TIMEOUT_MS)
         }
         override fun onError(error: Int) {
-            if (stopped) return
+            if (stopped || sessionResolved) return
             handler.removeCallbacks(finalResultWatchdog)
             finalResultPending = false
             NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_ERROR", "SpeechRecognizer onError code=$error")
@@ -129,49 +131,77 @@ class NexusWakeWordService : Service() {
             }
         }
         override fun onResults(results: android.os.Bundle?) {
-            if (stopped) return
+            if (stopped || sessionResolved) return
             handler.removeCallbacks(finalResultWatchdog)
+            handler.removeCallbacks(partialFinalize)
             finalResultPending = false
+            sessionResolved = true
             listening = false
             consecutiveErrors = 0
             val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()?.trim().orEmpty()
-            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_RESULT", "Финальный результат: ${phrase.ifBlank { "<пусто>" }}")
-            val normalized = phrase.lowercase(Locale.forLanguageTag("ru-RU"))
-                .replace("ё", "е").replace(Regex("[^\\p{L}\\p{N} ]"), " ")
-                .trim()
-            if (!waitingForCommand) {
-                val wakeDetected = normalized.split(Regex("\\s+")).any {
-                    it in setOf("nexus", "нексус", "некcус", "некус")
-                }
-                if (wakeDetected) {
-                    waitingForCommand = true
-                    updateNotification("NEXUS активирован — скажи команду")
-                    broadcastStatus("Слушаю команду. У тебя 10 секунд.")
-                    handler.removeCallbacks(commandTimeout)
-                    handler.postDelayed(commandTimeout, COMMAND_WINDOW_MS)
-                }
-            } else if (phrase.isNotBlank()) {
-                waitingForCommand = false
-                handler.removeCallbacks(commandTimeout)
-                val command = phrase.replace(Regex("(?i)^\\s*(nexus|нексус|некус)[, ]*"), "").trim()
-                if (command.isNotBlank()) {
-                    sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
-                    broadcastStatus("Команда передана NEXUS.")
-                } else {
-                    broadcastStatus("Команда не распознана. Снова ожидаю «NEXUS».")
-                }
-                updateNotification("Ожидаю слово «NEXUS»")
-            }
-            // SpeechRecognizer is asynchronous; never start a second session
-            // from a second callback or while the previous session is active.
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_RESULT", "Финальный результат: " + phrase.ifBlank { "<пусто>" })
+            handleRecognizedPhrase(phrase)
             scheduleRestart(900L)
         }
         override fun onPartialResults(partialResults: android.os.Bundle?) {
-            val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-            if (partial.isNotBlank()) NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_PARTIAL", partial)
+            if (stopped || sessionResolved) return
+            val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+            if (partial.isBlank()) return
+            latestPartial = partial
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_PARTIAL", partial)
+            // Some on-device recognizers stream partial hypotheses forever and never
+            // deliver onResults. Finalize the last stable hypothesis after silence.
+            handler.removeCallbacks(partialFinalize)
+            handler.postDelayed(partialFinalize, PARTIAL_FINALIZE_DELAY_MS)
         }
         override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
+    }
+
+
+    private val partialFinalize = Runnable {
+        if (!stopped && !sessionResolved && latestPartial.isNotBlank()) {
+            val phrase = latestPartial.trim()
+            sessionResolved = true
+            listening = false
+            finalResultPending = false
+            handler.removeCallbacks(finalResultWatchdog)
+            NexusDiagnostics.record(this, "VOICE_FALLBACK", "Финализация последней частичной гипотезы после " + PARTIAL_FINALIZE_DELAY_MS + " мс тишины: " + phrase)
+            try { recognizer?.cancel() } catch (_: Exception) {}
+            handleRecognizedPhrase(phrase)
+            scheduleRestart(900L)
+        }
+    }
+
+    private fun handleRecognizedPhrase(phrase: String) {
+        val normalized = phrase.lowercase(Locale.forLanguageTag("ru-RU"))
+            .replace("ё", "е").replace(Regex("[^\\p{L}\\p{N} ]"), " ")
+            .trim()
+        if (!waitingForCommand) {
+            val wakeDetected = normalized.split(Regex("\\s+")).any {
+                it in setOf("nexus", "нексус", "некcус", "некус")
+            }
+            if (wakeDetected) {
+                waitingForCommand = true
+                updateNotification("NEXUS активирован — скажи команду")
+                broadcastStatus("Слушаю команду. У тебя 10 секунд.")
+                handler.removeCallbacks(commandTimeout)
+                handler.postDelayed(commandTimeout, COMMAND_WINDOW_MS)
+            } else {
+                broadcastStatus("Ключевое слово не обнаружено. Продолжаю ожидание.")
+            }
+        } else if (phrase.isNotBlank()) {
+            waitingForCommand = false
+            handler.removeCallbacks(commandTimeout)
+            val command = phrase.replace(Regex("(?i)^\\s*(nexus|нексус|некус)[, ]*"), "").trim()
+            if (command.isNotBlank()) {
+                sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
+                broadcastStatus("Команда передана NEXUS.")
+            } else {
+                broadcastStatus("Команда не распознана. Снова ожидаю «NEXUS».")
+            }
+            updateNotification("Ожидаю слово «NEXUS»")
+        }
     }
 
     private val finalResultWatchdog = Runnable {
@@ -231,6 +261,8 @@ class NexusWakeWordService : Service() {
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900)
         }
         try {
+            sessionResolved = false
+            latestPartial = ""
             listening = true
             NexusDiagnostics.record(this, "VOICE", "startListening: ожидание ${if (waitingForCommand) "команды" else "ключевого слова"}")
             current.startListening(intent)
@@ -301,5 +333,6 @@ class NexusWakeWordService : Service() {
         private const val NOTIFICATION_ID = 4201
         private const val COMMAND_WINDOW_MS = 10_000L
         private const val FINAL_RESULT_TIMEOUT_MS = 8_000L
+        private const val PARTIAL_FINALIZE_DELAY_MS = 3_000L
     }
 }
