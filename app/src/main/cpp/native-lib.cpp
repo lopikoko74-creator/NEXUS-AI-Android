@@ -206,8 +206,7 @@ done ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"
 unsupported ::= "{" ws "\"version\"" ws ":" ws "1" ws "," ws "\"action\"" ws ":" ws "\"UNSUPPORTED\"" ws "," ws "\"args\"" ws ":" ws "{" ws "\"reason\"" ws ":" ws string ws "}" ws "}"
 digits ::= [0-9]+
 string ::= "\"" char* "\""
-char ::= [^"\\\n\r] | "\\" escape
-escape ::= ["\\/bfnrt] | "u" hex hex hex hex
+char ::= [^"\\\x7F\x00-\x1F] | [\\] (["\\bfnrt] | "u" hex hex hex hex)
 hex ::= [0-9a-fA-F]
 ws ::= [ \t\n\r]*
 )GBNF";
