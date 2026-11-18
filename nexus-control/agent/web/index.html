@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#090d18"><title>NEXUS CONTROL</title>
+<style>
+:root{color-scheme:dark;--bg:#090d18;--panel:#111a2a;--line:#26354b;--muted:#92a4bd;--cyan:#56d8e8;--red:#ff647c}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% 0%,#142b42,var(--bg) 55%);color:#edf5ff;font:15px system-ui, sans-serif;min-height:100vh}.wrap{max-width:1100px;margin:auto;padding:18px}.top{display:flex;align-items:center;justify-content:space-between;gap:12px}.brand{font-weight:800;letter-spacing:.14em;font-size:clamp(20px,3vw,30px)}.sub{color:var(--muted);font-size:12px}.pill{border:1px solid #28636b;color:#8ff3e6;border-radius:99px;padding:6px 12px;font-size:12px}.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:18px}.card{background:linear-gradient(145deg,#172338,#101827);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.wide{grid-column:span 2}.label{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}.value{font-size:clamp(17px,2.4vw,25px);font-weight:700;margin-top:7px;overflow-wrap:anywhere}.bar{height:7px;border-radius:9px;background:#26354b;margin-top:10px;overflow:hidden}.bar i{display:block;height:100%;background:linear-gradient(90deg,#38b9ce,#8af0df);width:0}.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}button{border:1px solid var(--line);border-radius:12px;padding:13px 8px;background:#1a2940;color:#eff8ff;font-weight:650;font-size:13px}button:active{transform:scale(.98)}button.danger{border-color:#71384a;background:#381d2a;color:#ffb6c3}.section{margin-top:18px}.list{max-height:210px;overflow:auto;color:#c5d4e8;font-size:12px;line-height:1.9}.foot{color:var(--muted);font-size:11px;margin-top:18px}.login{display:flex;gap:8px;margin-top:16px}.login input{flex:1;min-width:0;background:#111a2a;border:1px solid var(--line);border-radius:10px;padding:12px;color:white}.hidden{display:none}@media(max-width:650px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.actions{grid-template-columns:repeat(2,1fr)}.wide{grid-column:span 2}.wrap{padding:12px}}
+</style></head><body><main class="wrap">
+<header class="top"><div><div class="brand">NEXUS CONTROL</div><div class="sub">PC COMMAND CENTER · USB LINK</div></div><div class="pill" id="conn">● ОЖИДАНИЕ</div></header>
+<div class="login" id="login"><input id="token" type="password" placeholder="Токен доступа с компьютера"><button onclick="saveToken()">ПОДКЛЮЧИТЬ</button></div>
+<section id="panel" class="hidden">
+<div class="grid">
+<div class="card wide"><div class="label">Компьютер</div><div class="value" id="host">—</div><div class="sub" id="os">—</div></div>
+<div class="card"><div class="label">Процессор</div><div class="value" id="cpu">—</div><div class="bar"><i id="cpuBar"></i></div></div>
+<div class="card"><div class="label">Оперативная память</div><div class="value" id="ram">—</div><div class="bar"><i id="ramBar"></i></div></div>
+<div class="card"><div class="label">Время работы</div><div class="value" id="uptime">—</div></div>
+<div class="card"><div class="label">Архитектура</div><div class="value" id="arch">—</div></div>
+<div class="card wide"><div class="label">Накопители</div><div class="list" id="disks">—</div></div>
+</div>
+<div class="section card"><div class="label">Управление питанием и сеансом</div><div class="actions">
+<button onclick="act('lock')">🔒 Блокировка</button><button onclick="act('restart')">↻ Перезагрузка</button><button class="danger" onclick="act('shutdown')">⏻ Выключение</button><button onclick="act('cancel_power')">Отмена выключения</button>
+</div><div class="sub" style="margin-top:9px">Перед выключением и перезагрузкой появится подтверждение.</div></div>
+<div class="section card"><div class="label">Запущенные процессы (первые 80)</div><div class="list" id="procs">—</div></div>
+<div class="foot">NEXUS CONTROL Agent · локальное соединение через ADB reverse · обновление каждые 3 секунды</div>
+</section></main>
+<script>
+const $=id=>document.getElementById(id);let auth=localStorage.getItem('nexus_token')||'';
+function saveToken(){auth=$('token').value.trim();if(auth){localStorage.setItem('nexus_token',auth);$('login').classList.add('hidden');$('panel').classList.remove('hidden');refresh()}}
+async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{'Authorization':'Bearer '+auth,'Content-Type':'application/json',...(opts.headers||{})}});const j=await r.json();if(!r.ok)throw Error(j.error||r.status);return j}
+function fmt(n){if(n==null)return '—';return (n/1073741824).toFixed(1)+' ГБ'}
+function dur(s){if(s==null)return '—';let d=Math.floor(s/86400),h=Math.floor(s%86400/3600),m=Math.floor(s%3600/60);return d+'д '+h+'ч '+m+'м'}
+async function refresh(){try{const d=await api('/api/status');$('conn').textContent='● ПОДКЛЮЧЕНО';$('conn').style.color='#8ff3e6';$('host').textContent=d.hostname;$('os').textContent=d.os;$('arch').textContent=d.architecture;$('uptime').textContent=dur(d.uptime_seconds);$('cpu').textContent=d.cpu_percent==null?'нет данных':d.cpu_percent.toFixed(0)+'%';$('cpuBar').style.width=(d.cpu_percent||0)+'%';if(d.memory){$('ram').textContent=fmt(d.memory.used)+' / '+fmt(d.memory.total);$('ramBar').style.width=d.memory.percent+'%'}$('disks').textContent=(d.disks||[]).map(x=>x.mount+': '+fmt(x.free)+' свободно из '+fmt(x.total)).join('\n')||'Нет данных';$('procs').textContent=(d.processes||[]).map(p=>p.pid+' · '+p.name).join('   ')||'psutil не установлен';}catch(e){$('conn').textContent='● НЕТ СВЯЗИ';$('conn').style.color='#ff9eae';if(e.message==='Unauthorized'){$('login').classList.remove('hidden');$('panel').classList.add('hidden')}}}
+async function act(action){let msg={lock:'Заблокировать компьютер?',restart:'Перезагрузить компьютер?',shutdown:'Выключить компьютер?'}[action]||'Выполнить действие?';if(!confirm(msg))return;try{const r=await api('/api/action',{method:'POST',body:JSON.stringify({action})});alert(r.message||'Команда принята')}catch(e){alert('Ошибка: '+e.message)}}
+if(auth){$('token').value=auth;saveToken()}setInterval(refresh,3000);
+</script></body></html>
