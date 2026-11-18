@@ -42,3 +42,20 @@ CI использует JDK 17, Android SDK 36, NDK 27.2.12479018, CMake 3.22.1 
 ## Безопасность
 
 LLM не получает доступ к произвольному shell-коду. Любое действие должно проходить через типизированную модель и policy gate. Внешние, финансовые и потенциально необратимые действия должны требовать явного подтверждения пользователя.
+
+## Offline unknown-command agent loop
+
+When the deterministic command parser cannot resolve a request, NEXUS can pass it to the locally loaded GGUF model through llama.cpp. The model's own GGUF chat template is applied when available, and constrained decoding restricts output to the versioned JSON action schema.
+
+The agent uses a bounded observe-plan-act loop:
+1. Include the current visible accessibility labels as initial context.
+2. Ask the local model for one immediate typed action.
+3. Validate the JSON response and reject unknown action types or invalid parameters.
+4. Execute only allow-listed Android operations.
+5. Capture a bounded snapshot of the visible screen and feed the result back to the model.
+6. Re-plan after failures or intermediate steps, with duplicate-action detection and a six-step ceiling.
+7. Stop on completion, unsupported requests, invalid output after bounded repair attempts, or a required user confirmation.
+
+Supported model actions are opening an installed app, tapping an exact visible label, entering text into the focused editable field, going back, scrolling, waiting briefly for a screen transition, answering, and reporting completion/unsupported. Taps and text entry require explicit confirmation. Arbitrary shell commands, scripts, unrestricted intents, sending messages, calls, deletion, and purchases are not executable model actions.
+
+Inference runs on-device. No cloud inference endpoint is configured or required. Model loading remains a deliberate user action because GGUF files can consume several gigabytes of memory. Device-side performance and actual model compatibility still require testing on the target phone.
