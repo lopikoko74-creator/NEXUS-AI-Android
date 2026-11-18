@@ -26,4 +26,9 @@ QR="$HOME/.local/share/nexus-control/NEXUS-CONTROL-QR.png"
 "$HOME/.local/share/nexus-control/venv/bin/python" -c 'import qrcode,sys; qrcode.make(sys.argv[1]).save(sys.argv[2])' "$URL" "$QR"
 echo "[4/4] NEXUS CONTROL IS READY. Scan the QR code with your phone camera."
 xdg-open "$QR" >/dev/null 2>&1 || echo "QR image: $QR"
+if adb shell am start -a android.intent.action.VIEW -d "$URL" >/dev/null 2>&1; then
+  echo "Dashboard opened automatically on the connected Android phone."
+else
+  echo "Scan the QR image with the phone camera: $QR"
+fi
 echo "USB tunnel active. Dashboard URL: $URL"

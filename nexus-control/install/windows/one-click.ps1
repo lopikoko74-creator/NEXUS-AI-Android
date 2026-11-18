@@ -59,6 +59,8 @@ $Qr = Join-Path $env:LOCALAPPDATA "NexusControl\NEXUS-CONTROL-QR.png"
 $Vpy = Join-Path $env:LOCALAPPDATA "NexusControl\venv\Scripts\python.exe"
 & $Vpy -c "import qrcode,sys; qrcode.make(sys.argv[1]).save(sys.argv[2])" $Url $Qr
 Start-Process $Qr
+Write-Host "Opening dashboard on the connected Android phone..."
+& $Adb shell am start -a android.intent.action.VIEW -d $Url | Out-Null
 Write-Host ""
 Write-Host "NEXUS CONTROL IS READY. Scan the QR code with your phone camera."
 Write-Host "If the QR viewer closes, open: $Url"
