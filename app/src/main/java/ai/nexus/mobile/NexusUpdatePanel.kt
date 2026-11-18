@@ -26,12 +26,59 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import java.net.UnknownHostException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 
 private const val NEXUS_RELEASES_API =
     "https://api.github.com/repos/lopikoko74-creator/NEXUS-AI-Android/releases/latest"
+
+private fun downloadLatestReleaseFallback(context: android.content.Context): File {
+    val base = "https://github.com/lopikoko74-creator/NEXUS-AI-Android/releases/latest/download"
+    val target = File(context.cacheDir, "updates/nexus-latest.apk")
+    target.parentFile?.mkdirs()
+    fun connection(url: String, timeout: Int) =
+        (URL(url).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15000
+            readTimeout = timeout
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "NEXUS-AI-Updater")
+        }
+
+    val checksumConnection = connection("$base/app-release.apk.sha256", 30000)
+    val expectedHash = try {
+        if (checksumConnection.responseCode !in 200..299) error("GitHub не отдал контрольную сумму.")
+        checksumConnection.inputStream.bufferedReader().use {
+            it.readText().trim().split(Regex("\\s+"))[0].lowercase()
+        }
+    } finally { checksumConnection.disconnect() }
+
+    val apkConnection = connection("$base/app-release.apk", 120000)
+    try {
+        if (apkConnection.responseCode !in 200..299) error("GitHub не отдал APK.")
+        apkConnection.inputStream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+    } finally { apkConnection.disconnect() }
+
+    val actualHash = MessageDigest.getInstance("SHA-256").digest(target.readBytes())
+        .joinToString("") { b -> "%02x".format(b) }
+    if (actualHash != expectedHash) { target.delete(); error("SHA-256 APK не совпадает.") }
+
+    val archive = context.packageManager.getPackageArchiveInfo(target.absolutePath,
+        PackageManager.GET_SIGNING_CERTIFICATES) ?: run { target.delete(); error("APK не прошёл разбор Android.") }
+    if (archive.packageName != context.packageName) { target.delete(); error("APK принадлежит другому приложению.") }
+    val archiveVersion = if (Build.VERSION.SDK_INT >= 28) archive.longVersionCode else archive.versionCode.toLong()
+    val installed = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+    val currentVersion = if (Build.VERSION.SDK_INT >= 28) installed.longVersionCode else installed.versionCode.toLong()
+    if (archiveVersion <= currentVersion) { target.delete(); error("Новой версии пока нет.") }
+    fun signerHashes(info: android.content.pm.PackageInfo) = info.signingInfo?.apkContentsSigners?.map {
+        MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) }
+    }?.toSet().orEmpty()
+    if (signerHashes(installed).isEmpty() || signerHashes(installed) != signerHashes(archive)) {
+        target.delete(); error("Подпись APK не совпадает. Установка остановлена.")
+    }
+    return target
+}
 
 @Composable
 fun NexusUpdatePanel() {
@@ -70,6 +117,7 @@ fun NexusUpdatePanel() {
                         downloadedFile = null
                         try {
                             val result = withContext(Dispatchers.IO) {
+                                try {
                                 val connection = (URL(NEXUS_RELEASES_API).openConnection() as HttpURLConnection).apply {
                                     connectTimeout = 15000
                                     readTimeout = 30000
@@ -129,6 +177,9 @@ fun NexusUpdatePanel() {
                                 if (installedSigners.isEmpty() || archiveSigners.isEmpty() || installedSigners != archiveSigners)
                                     error("Подпись APK не совпадает с установленной версией. Обновление остановлено, данные не затронуты.")
                                 target
+                                } catch (dns: UnknownHostException) {
+                                    downloadLatestReleaseFallback(context)
+                                }
                             }
                             downloadedFile = result
                             status = "APK ${result.name} загружен и проверен. Совпадают package name, сертификат подписи и versionCode. Можно устанавливать."
