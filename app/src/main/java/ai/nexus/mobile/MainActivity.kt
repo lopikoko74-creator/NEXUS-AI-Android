@@ -9,37 +9,57 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import java.io.File
 
+private enum class ChatRole { USER, ASSISTANT, ACTIVITY }
+
+private data class ChatLine(
+    val id: Long,
+    val role: ChatRole,
+    val title: String,
+    val body: String = ""
+)
+
 class MainActivity : ComponentActivity() {
-    private fun createAgentLoop(): NexusAgentLoop {
+    private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
         return NexusAgentLoop(
             generate = { prompt -> engine.generate(prompt, 384) },
@@ -47,67 +67,85 @@ class MainActivity : ComponentActivity() {
                 when (plan) {
                     is NexusAiPlan.OpenApp -> when (val result = InstalledAppLauncher.launch(this, plan.appName)) {
                         is InstalledAppLauncher.Result.Launched ->
-                            NexusExecutionOutcome(true, "Opened installed app: ${result.appLabel}. Current screen: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."}")
+                            NexusExecutionOutcome(true, "Открыл приложение «${result.appLabel}».")
                         is InstalledAppLauncher.Result.NotFound ->
-                            NexusExecutionOutcome(false, "App is not installed or was not found: ${result.requestedName}")
+                            NexusExecutionOutcome(false, "Не нашёл установленное приложение с названием «${result.requestedName}».")
                         is InstalledAppLauncher.Result.Failed ->
-                            NexusExecutionOutcome(false, "Could not open app: ${result.reason}")
+                            NexusExecutionOutcome(false, "Android не разрешил запуск приложения: ${result.reason}")
                     }
                     is NexusAiPlan.TapText -> {
                         val service = NexusAccessibilityService.current
-                        if (!userConfirmed) NexusExecutionOutcome(false, "NEXUS wants to tap the exact visible label '${plan.exactLabel}'.", requiresConfirmation = true)
-                        else if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        if (!userConfirmed) NexusExecutionOutcome(false, "Нужно подтверждение нажатия по точной надписи «${plan.exactLabel}».", requiresConfirmation = true)
+                        else if (service == null) NexusExecutionOutcome(false, "Служба специальных возможностей NEXUS не подключена.")
                         else {
                             val ok = service.executeApprovedAction(NexusAction.TapVisibleText(plan.exactLabel), true)
-                            NexusExecutionOutcome(ok, if (ok) "Tapped '${plan.exactLabel}'. Screen: ${service.describeActiveWindow()}" else "Could not tap exact visible label '${plan.exactLabel}'. Screen: ${service.describeActiveWindow()}")
+                            NexusExecutionOutcome(ok, if (ok) "Нажал «${plan.exactLabel}». Экран: ${service.describeActiveWindow()}" else "Не удалось нажать «${plan.exactLabel}». Экран: ${service.describeActiveWindow()}")
                         }
                     }
                     is NexusAiPlan.EnterText -> {
                         val service = NexusAccessibilityService.current
-                        if (!userConfirmed) NexusExecutionOutcome(false, "NEXUS wants to enter text into the currently focused field.", requiresConfirmation = true)
-                        else if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        if (!userConfirmed) NexusExecutionOutcome(false, "Нужно подтверждение ввода текста в активное поле.", requiresConfirmation = true)
+                        else if (service == null) NexusExecutionOutcome(false, "Служба специальных возможностей NEXUS не подключена.")
                         else {
                             val ok = service.executeApprovedAction(NexusAction.EnterText(plan.text), true)
-                            NexusExecutionOutcome(ok, if (ok) "Text entered. Screen: ${service.describeActiveWindow()}" else "Text entry failed. Screen: ${service.describeActiveWindow()}")
+                            NexusExecutionOutcome(ok, if (ok) "Текст введён. Экран: ${service.describeActiveWindow()}" else "Не удалось ввести текст. Экран: ${service.describeActiveWindow()}")
                         }
                     }
                     is NexusAiPlan.Scroll -> {
                         val service = NexusAccessibilityService.current
-                        if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        if (service == null) NexusExecutionOutcome(false, "Служба специальных возможностей NEXUS не подключена.")
                         else {
                             val forward = plan.direction == "FORWARD"
                             val ok = service.executeApprovedAction(NexusAction.Scroll(forward), true)
-                            NexusExecutionOutcome(ok, if (ok) "Scrolled ${plan.direction.lowercase()}. Screen: ${service.describeActiveWindow()}" else "Scroll action failed.")
+                            NexusExecutionOutcome(ok, if (ok) "Экран прокручен. Текущие элементы: ${service.describeActiveWindow()}" else "На экране не найден подходящий элемент для прокрутки.")
                         }
                     }
                     is NexusAiPlan.Wait -> {
                         delay(plan.milliseconds.toLong())
-                        NexusExecutionOutcome(true, "Waited ${plan.milliseconds} ms. Screen: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."}")
+                        NexusExecutionOutcome(true, "Подождал ${plan.milliseconds} мс. Экран: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "служба специальных возможностей не подключена"}")
                     }
                     NexusAiPlan.GoBack -> {
                         val service = NexusAccessibilityService.current
-                        if (service == null) NexusExecutionOutcome(false, "Accessibility service is not enabled.")
+                        if (service == null) NexusExecutionOutcome(false, "Служба специальных возможностей NEXUS не подключена.")
                         else {
                             val ok = service.executeApprovedAction(NexusAction.GoBack, true)
-                            NexusExecutionOutcome(ok, if (ok) "Navigated back. Screen: ${service.describeActiveWindow()}" else "Android back action failed.")
+                            NexusExecutionOutcome(ok, if (ok) "Вернулся на предыдущий экран. Экран: ${service.describeActiveWindow()}" else "Android не выполнил действие «Назад».")
                         }
                     }
                     is NexusAiPlan.Answer, is NexusAiPlan.Done, is NexusAiPlan.Unsupported ->
-                        NexusExecutionOutcome(false, "Terminal model response is handled by the agent loop.")
+                        NexusExecutionOutcome(false, "Ответ модели обрабатывается планировщиком.")
                 }
             },
-            maxSteps = 10
+            maxSteps = 10,
+            onEvent = onEvent
         )
     }
 
-    private fun runAgentFallback(request: String, onResult: (NexusAgentResult) -> Unit) {
+    private fun runAgentFallback(
+        request: String,
+        onEvent: (NexusAgentEvent) -> Unit,
+        onResult: (NexusAgentResult) -> Unit
+    ) {
         val engine = NativeLlamaEngine.getInstance(this)
         if (!engine.isModelLoaded()) {
-            onResult(NexusAgentResult.Failed("Неизвестная команда. Сначала загрузи локальную GGUF-модель.", emptyList()))
+            onResult(NexusAgentResult.Failed("Локальная GGUF-модель не загружена. Открой настройки модели и нажми «Загрузить модель».", emptyList()))
             return
         }
-        val screen = NexusAccessibilityService.current?.describeActiveWindow() ?: "Accessibility service is not connected."
-        lifecycleScope.launch { onResult(createAgentLoop().run(request, listOf("Initial screen: $screen"))) }
+        lifecycleScope.launch {
+            val installedApps = InstalledAppLauncher.listLaunchableApps(this@MainActivity)
+            val screen = NexusAccessibilityService.current?.describeActiveWindow()
+                ?: "Служба специальных возможностей не подключена; доступен только запуск приложений."
+            val context = listOf(
+                "Installed launchable apps (use exact visible labels from this list): ${installedApps.joinToString(", ").take(5000)}",
+                "Initial screen: $screen"
+            )
+            val result = try {
+                createAgentLoop(onEvent).run(request, context)
+            } catch (error: Exception) {
+                NexusAgentResult.Failed("Ошибка выполнения: ${error.message ?: error.javaClass.simpleName}", emptyList())
+            }
+            onResult(result)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -116,199 +154,292 @@ class MainActivity : ComponentActivity() {
         setContent {
             var modelName by remember { mutableStateOf(prefs.getString("model_name", null) ?: "Модель не выбрана") }
             var modelUri by remember { mutableStateOf(prefs.getString("model_uri", null)) }
-            var engineStatus by remember { mutableStateOf("Нативный движок ещё не запускался") }
-            var appCommand by remember { mutableStateOf("") }
-            var appCommandStatus by remember { mutableStateOf("Текстовые команды; неизвестные запросы передаются локальной модели после загрузки GGUF") }
-            var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
-            var modelStatus by remember {
-                val savedPath = prefs.getString("model_file", null)
-                val savedFile = savedPath?.let(::File)
-                mutableStateOf(
-                    if (savedFile?.isFile == true) "GGUF импортирован: ${savedFile.name}. Можно вручную загрузить в llama.cpp."
-                    else "Модель ещё не импортирована в хранилище приложения"
-                )
+            var modelFileStatus by remember {
+                val saved = prefs.getString("model_file", null)?.let(::File)
+                mutableStateOf(if (saved?.isFile == true) "Файл подготовлен: ${saved.name}" else "GGUF-файл ещё не подготовлен")
             }
+            var engineStatus by remember { mutableStateOf("Модель не загружена в оперативную память") }
+            var command by remember { mutableStateOf("") }
+            var busy by remember { mutableStateOf(false) }
+            var showModelSettings by remember { mutableStateOf(false) }
+            var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
+            var chatLines by remember {
+                mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
+            }
+            val listState = rememberLazyListState()
+
+            fun addLine(role: ChatRole, title: String, body: String = "") {
+                chatLines = chatLines + ChatLine(System.nanoTime(), role, title, body)
+            }
+
+            fun showEvent(event: NexusAgentEvent) {
+                when (event.type) {
+                    NexusAgentEventType.STARTED -> addLine(ChatRole.ACTIVITY, event.title, event.detail)
+                    NexusAgentEventType.THINKING -> addLine(ChatRole.ACTIVITY, event.title, event.detail)
+                    NexusAgentEventType.PLAN -> addLine(ChatRole.ACTIVITY, "Шаг ${event.step}: ${event.title}", event.detail)
+                    NexusAgentEventType.ACTION_STARTED -> addLine(ChatRole.ACTIVITY, "Шаг ${event.step}: ${event.title}", event.detail)
+                    NexusAgentEventType.ACTION_RESULT -> addLine(ChatRole.ACTIVITY, if (event.title == "Шаг выполнен") "Шаг ${event.step}: успешно" else "Шаг ${event.step}: ошибка", event.detail)
+                    NexusAgentEventType.RETRY -> addLine(ChatRole.ACTIVITY, event.title, event.detail)
+                    NexusAgentEventType.WARNING -> addLine(ChatRole.ACTIVITY, event.title, event.detail)
+                    NexusAgentEventType.FINISHED -> Unit
+                }
+            }
+
+            fun finishAgent(result: NexusAgentResult) {
+                busy = false
+                when (result) {
+                    is NexusAgentResult.Completed -> addLine(ChatRole.ASSISTANT, "Готово", result.summary)
+                    is NexusAgentResult.Unsupported -> addLine(ChatRole.ASSISTANT, "Не могу выполнить задачу", result.reason)
+                    is NexusAgentResult.Failed -> addLine(ChatRole.ASSISTANT, "Задача остановлена", result.reason)
+                    is NexusAgentResult.AwaitingConfirmation -> {
+                        pendingConfirmation = result.pending
+                        addLine(ChatRole.ASSISTANT, "Требуется подтверждение", result.explanation)
+                    }
+                }
+            }
+
+            fun submitRequest(rawRequest: String) {
+                val request = rawRequest.trim()
+                if (request.isEmpty() || busy) return
+                command = ""
+                addLine(ChatRole.USER, "Вы", request)
+                busy = true
+
+                val parsed = AppCommandParser.parse(request)
+                if (parsed != null) {
+                    when (val launch = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
+                        is InstalledAppLauncher.Result.Launched -> {
+                            busy = false
+                            addLine(ChatRole.ASSISTANT, "Приложение открыто", "Запустил «${launch.appLabel}».")
+                        }
+                        is InstalledAppLauncher.Result.NotFound -> {
+                            addLine(ChatRole.ACTIVITY, "Не нашёл точное название приложения", "Передаю запрос локальной модели. Она получит список установленных приложений.")
+                            runAgentFallback(request, ::showEvent, ::finishAgent)
+                        }
+                        is InstalledAppLauncher.Result.Failed -> {
+                            busy = false
+                            addLine(ChatRole.ASSISTANT, "Не удалось открыть приложение", launch.reason)
+                        }
+                    }
+                } else {
+                    runAgentFallback(request, ::showEvent, ::finishAgent)
+                }
+            }
+
+            LaunchedEffect(chatLines.size) {
+                if (chatLines.isNotEmpty()) listState.animateScrollToItem(chatLines.lastIndex)
+            }
+
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
                 uri?.let {
-                    contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    try {
+                        contentResolver.takePersistableUriPermission(it, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    } catch (_: Exception) { }
                     modelUri = it.toString()
                     modelName = contentResolver.query(it, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                         if (cursor.moveToFirst()) cursor.getString(0) else null
                     } ?: "GGUF-модель выбрана"
                     prefs.edit().putString("model_uri", it.toString()).putString("model_name", modelName).apply()
-                    modelStatus = "Файл выбран. Следующий шаг — импорт в память приложения."
+                    modelFileStatus = "Файл выбран. Нажми «Подготовить модель»."
+                    showModelSettings = true
                 }
             }
+
             MaterialTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        pendingConfirmation?.let { pending ->
-                            AlertDialog(
-                                onDismissRequest = { pendingConfirmation = null },
-                                title = { Text("Подтвердить действие NEXUS?") },
-                                text = { Text("Модель предлагает: ${pending.plan}. Это действие будет выполнено только после твоего подтверждения.") },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        pendingConfirmation = null
-                                        appCommandStatus = "Выполняю подтверждённый шаг и проверяю результат…"
-                                        this@MainActivity.lifecycleScope.launch {
-                                            when (val result = createAgentLoop().resume(pending)) {
-                                                is NexusAgentResult.Completed -> appCommandStatus = result.summary
-                                                is NexusAgentResult.Unsupported -> appCommandStatus = "Задача остановлена: ${result.reason}"
-                                                is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
-                                                is NexusAgentResult.AwaitingConfirmation -> {
-                                                    pendingConfirmation = result.pending
-                                                    appCommandStatus = result.explanation
-                                                }
-                                            }
-                                        }
-                                    }) { Text("Подтвердить") }
-                                },
-                                dismissButton = {
-                                    TextButton(onClick = {
-                                        pendingConfirmation = null
-                                        appCommandStatus = "Действие отменено пользователем."
-                                    }) { Text("Отмена") }
+                    Column(Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("NEXUS", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                                Text("Локальный AI-помощник", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(50),
+                                        color = if (NativeLlamaEngine.getInstance(this@MainActivity).isModelLoaded()) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                    ) { Text(if (NativeLlamaEngine.getInstance(this@MainActivity).isModelLoaded()) "Модель активна" else "Офлайн", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), style = MaterialTheme.typography.labelSmall) }
                                 }
-                            )
+                                TextButton(onClick = { showModelSettings = !showModelSettings }) {
+                                    Text(if (showModelSettings) "Скрыть настройки" else "Модель и доступ")
+                                }
+                            }
                         }
-                        Text("NEXUS AI", style = MaterialTheme.typography.headlineLarge)
-                        Text("Локальный помощник для Android")
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Команды приложений", style = MaterialTheme.typography.titleMedium)
-                                Text("Голосовое распознавание будет добавлено отдельно. Известные команды выполняются напрямую, неизвестные и составные запросы разбирает локальная ИИ-модель. Примеры: «Открой телегу», «Прокрути экран вниз», «Найди настройки и открой их».")
-                                OutlinedTextField(
-                                    value = appCommand,
-                                    onValueChange = { appCommand = it },
-                                    label = { Text("Команда NEXUS") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true
-                                )
-                                Button(onClick = {
-                                    val parsed = AppCommandParser.parse(appCommand)
-                                    if (parsed == null) {
-                                        appCommandStatus = "NEXUS передаёт неизвестную команду локальной модели…"
-                                        runAgentFallback(appCommand) { result ->
-                                            when (result) {
-                                                is NexusAgentResult.Completed -> appCommandStatus = result.summary
-                                                is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${result.reason}"
-                                                is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${result.reason}"
-                                                is NexusAgentResult.AwaitingConfirmation -> {
-                                                    pendingConfirmation = result.pending
-                                                    appCommandStatus = result.explanation
+
+                        if (showModelSettings) {
+                            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+                                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                                    Text("Локальная модель", style = MaterialTheme.typography.titleMedium)
+                                    Text(modelName, style = MaterialTheme.typography.bodySmall)
+                                    Text(modelFileStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        OutlinedButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Выбрать GGUF") }
+                                        if (modelUri != null) {
+                                            Button(onClick = {
+                                                lifecycleScope.launch {
+                                                    try {
+                                                        modelFileStatus = "Импортирую GGUF…"
+                                                        val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri.orEmpty()))
+                                                        prefs.edit().putString("model_file", imported.absolutePath).apply()
+                                                        modelFileStatus = "Подготовлено: ${imported.name}"
+                                                    } catch (error: Exception) {
+                                                        modelFileStatus = "Ошибка импорта: ${error.message ?: "неизвестная ошибка"}"
+                                                    }
                                                 }
-                                            }
+                                            }) { Text("Подготовить") }
                                         }
-                                    } else {
-                                        when (val result = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
-                                            is InstalledAppLauncher.Result.Launched ->
-                                                appCommandStatus = "Запускаю: ${result.appLabel}"
-                                            is InstalledAppLauncher.Result.NotFound -> {
-                                                appCommandStatus = "Приложение не найдено. Передаю полную команду локальной модели…"
-                                                runAgentFallback(appCommand) { agentResult ->
-                                                    when (agentResult) {
-                                                        is NexusAgentResult.Completed -> appCommandStatus = agentResult.summary
-                                                        is NexusAgentResult.Unsupported -> appCommandStatus = "Модель не смогла безопасно выполнить задачу: ${agentResult.reason}"
-                                                        is NexusAgentResult.Failed -> appCommandStatus = "Цикл агента остановлен: ${agentResult.reason}"
-                                                        is NexusAgentResult.AwaitingConfirmation -> {
-                                                            pendingConfirmation = agentResult.pending
-                                                            appCommandStatus = agentResult.explanation
-                                                        }
+                                    }
+                                    Text(engineStatus, style = MaterialTheme.typography.bodySmall)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(onClick = {
+                                            lifecycleScope.launch {
+                                                val file = prefs.getString("model_file", null)?.let(::File)
+                                                if (file == null || !file.isFile) {
+                                                    engineStatus = "Сначала выбери GGUF и нажми «Подготовить»."
+                                                } else {
+                                                    engineStatus = "Загружаю модель в RAM…"
+                                                    try {
+                                                        val info = NativeLlamaEngine.getInstance(this@MainActivity).loadModel(file)
+                                                        engineStatus = "Загружена: $info"
+                                                    } catch (error: Throwable) {
+                                                        engineStatus = "Ошибка загрузки: ${error.message ?: error.javaClass.simpleName}"
                                                     }
                                                 }
                                             }
-                                            is InstalledAppLauncher.Result.Failed ->
-                                                appCommandStatus = "Не удалось запустить: ${result.reason}"
-                                        }
-                                    }
-                                }, modifier = Modifier.fillMaxWidth()) { Text("Выполнить команду") }
-                                Text(appCommandStatus)
-                            }
-                        }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Локальная модель", style = MaterialTheme.typography.titleMedium)
-                                Text(modelName)
-                                Button(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Выбрать GGUF-файл") }
-                                Text("Файл выбирается через системный проводник Android. Перед запуском модель копируется в приватное хранилище приложения и проверяется по заголовку GGUF.")
-                                Text(modelStatus)
-                                if (modelUri != null) {
-                                    OutlinedButton(onClick = {
-                                        this@MainActivity.lifecycleScope.launch {
-                                            modelStatus = "Импорт модели…"
-                                            try {
-                                                val imported = ModelStorage.importModel(this@MainActivity, Uri.parse(modelUri.orEmpty()))
-                                                prefs.edit().putString("model_file", imported.absolutePath).apply()
-                                                modelStatus = "Импорт завершён: ${imported.name}. llama.cpp готов к ручной загрузке."
-                                            } catch (error: Exception) {
-                                                modelStatus = "Ошибка импорта: ${error.message ?: "неизвестная ошибка"}"
+                                        }) { Text("Загрузить модель") }
+                                        OutlinedButton(onClick = {
+                                            lifecycleScope.launch {
+                                                try {
+                                                    NativeLlamaEngine.getInstance(this@MainActivity).unloadModel()
+                                                    engineStatus = "Модель выгружена из RAM."
+                                                } catch (error: Exception) {
+                                                    engineStatus = "Ошибка выгрузки: ${error.message}"
+                                                }
                                             }
-                                        }
-                                    }) { Text("Подготовить модель") }
+                                        }) { Text("Выгрузить") }
+                                    }
+                                    OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
+                                        Text("Настройки специальных возможностей")
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+
+                        LazyColumn(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            state = listState,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            items(chatLines, key = { it.id }) { line ->
+                                NexusChatBubble(line)
+                            }
+                            if (busy) {
+                                item(key = "nexus-working") {
+                                    Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Text("NEXUS выполняет задачу…", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Локальный ИИ — llama.cpp", style = MaterialTheme.typography.titleMedium)
-                                Text("Загрузка модели выполняется только после нажатия. Для POCO F6 начни с GGUF 2–4B в квантизации Q4_K_M. Во время загрузки возможен высокий расход RAM и нагрев.")
-                                Text(engineStatus)
-                                Button(onClick = {
-                                    this@MainActivity.lifecycleScope.launch {
-                                        val path = prefs.getString("model_file", null)
-                                        val file = path?.let(::File)
-                                        if (file == null || !file.isFile) {
-                                            engineStatus = "Сначала выбери и подготовь GGUF-файл."
-                                        } else {
-                                            engineStatus = "Инициализация llama.cpp и загрузка модели…"
-                                            try {
-                                                val info = NativeLlamaEngine.getInstance(this@MainActivity).loadModel(file)
-                                                engineStatus = "Модель загружена: $info"
-                                            } catch (error: LinkageError) {
-                                                engineStatus = "Ошибка нативного движка: ${error.message ?: "библиотека не загрузилась"}"
-                                            } catch (error: Exception) {
-                                                engineStatus = "Не удалось загрузить модель: ${error.message ?: "неизвестная ошибка"}"
-                                            }
-                                        }
-                                    }
-                                }) { Text("Загрузить модель в llama.cpp") }
-                                OutlinedButton(onClick = {
-                                    this@MainActivity.lifecycleScope.launch {
-                                        try {
-                                            NativeLlamaEngine.getInstance(this@MainActivity).unloadModel()
-                                            engineStatus = "Модель выгружена из памяти."
-                                        } catch (error: Exception) {
-                                            engineStatus = "Ошибка выгрузки: ${error.message ?: "неизвестная ошибка"}"
-                                        }
-                                    }
-                                }) { Text("Выгрузить модель из RAM") }
-                            }
+
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = command,
+                                onValueChange = { command = it },
+                                modifier = Modifier.weight(1f),
+                                placeholder = { Text("Напиши NEXUS…") },
+                                maxLines = 4,
+                                enabled = !busy
+                            )
+                            Button(
+                                onClick = { submitRequest(command) },
+                                enabled = command.isNotBlank() && !busy,
+                                modifier = Modifier.height(56.dp)
+                            ) { Text("Отправить") }
                         }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Управление телефоном", style = MaterialTheme.typography.titleMedium)
-                                Text("Чтобы NEXUS мог управлять интерфейсом, включи его службу специальных возможностей Android.")
-                                Button(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
-                                    Text("Открыть настройки Accessibility")
-                                }
-                            }
-                        }
-                        Card(Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Текущий этап", style = MaterialTheme.typography.titleMedium)
-                                Text("Подключены офлайн-генерация токенов llama.cpp, chat template выбранной GGUF-модели, JSON-планировщик и итеративный цикл: план → действие → наблюдение → перепланирование.")
-                                Text("Голосовой wake-word, ASR и TTS пока отдельный следующий этап. Нажатия и ввод текста требуют подтверждения.")
-                            }
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        OutlinedButton(onClick = { finish() }, modifier = Modifier.fillMaxWidth()) {
-                            Text("Выключить NEXUS")
-                        }
+                        Text(
+                            "Запросы обрабатываются локальной GGUF-моделью. Нажатия и ввод текста требуют подтверждения.",
+                            Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
+                }
+            }
+
+            pendingConfirmation?.let { pending ->
+                AlertDialog(
+                    onDismissRequest = { pendingConfirmation = null },
+                    title = { Text("Подтвердить действие?") },
+                    text = { Text("NEXUS предлагает: ${pending.plan}. Действие будет выполнено только после подтверждения.") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            pendingConfirmation = null
+                            busy = true
+                            lifecycleScope.launch {
+                                val result = try {
+                                    createAgentLoop(::showEvent).resume(pending)
+                                } catch (error: Exception) {
+                                    NexusAgentResult.Failed("Ошибка продолжения: ${error.message ?: error.javaClass.simpleName}", emptyList())
+                                }
+                                finishAgent(result)
+                            }
+                        }) { Text("Подтвердить") }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = {
+                            pendingConfirmation = null
+                            busy = false
+                            addLine(ChatRole.ASSISTANT, "Действие отменено", "Я не выполнял это действие.")
+                        }) { Text("Отмена") }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun NexusChatBubble(line: ChatLine) {
+    val isUser = line.role == ChatRole.USER
+    val isActivity = line.role == ChatRole.ACTIVITY
+    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    val container = when {
+        isUser -> MaterialTheme.colorScheme.primaryContainer
+        isActivity -> MaterialTheme.colorScheme.surfaceContainerLow
+        else -> MaterialTheme.colorScheme.secondaryContainer
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(if (isActivity) 0.96f else 0.88f),
+            color = container,
+            shape = RoundedCornerShape(
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomEnd = if (isUser) 5.dp else 18.dp,
+                bottomStart = if (isUser) 18.dp else 5.dp
+            )
+        ) {
+            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    line.title,
+                    style = if (isActivity) MaterialTheme.typography.labelMedium else MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (line.body.isNotBlank()) {
+                    Text(
+                        line.body,
+                        style = if (isActivity) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
