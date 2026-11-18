@@ -103,6 +103,20 @@ class NexusAiPlannerTest {
     }
 
     @Test
+    fun rejectsUnexpectedRootFieldsAndCoercedVersion() {
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":1,"action":"GO_BACK","args":{},"debug":true}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+        assertTrue(
+            NexusAiPlanner.parse(
+                """{"version":"1","action":"GO_BACK","args":{}}"""
+            ) is NexusPlanParseResult.Invalid
+        )
+    }
+
+    @Test
     fun rejectsOversizedOutputAndFields() {
         assertTrue(NexusAiPlanner.parse("x".repeat(4097)) is NexusPlanParseResult.Invalid)
         val longName = "a".repeat(513)
