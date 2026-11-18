@@ -87,7 +87,7 @@ A separate cross-platform PC dashboard project is available in [`nexus-control/`
 
 Workflow `.github/workflows/publish-release.yml` запускается при push тега вида `v0.5.0`. Он выполняет unit-тесты, собирает подписанный release APK и публикует APK вместе с SHA-256 в GitHub Releases.
 
-Перед первой публикацией владелец репозитория должен добавить в **Settings → Secrets and variables → Actions** четыре secrets:
+Перед первой публикацией владелец репозитория должен включить **Settings → Actions → General → Workflow permissions → Read and write permissions** (иначе GitHub вернёт 403 при создании Release), а также добавить в **Settings → Secrets and variables → Actions** четыре secrets:
 - `NEXUS_KEYSTORE_BASE64` — содержимое постоянного keystore в Base64;
 - `NEXUS_STORE_PASSWORD`;
 - `NEXUS_KEY_ALIAS`;
