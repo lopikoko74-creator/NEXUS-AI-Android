@@ -1,6 +1,6 @@
 package ai.nexus.mobile
 
-import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 
@@ -12,9 +12,9 @@ object InstalledAppLauncher {
     }
 
     @Suppress("DEPRECATION")
-    fun listLaunchableApps(activity: Activity, limit: Int = 100): List<String> {
+    fun listLaunchableApps(context: Context, limit: Int = 100): List<String> {
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return activity.packageManager.queryIntentActivities(query, PackageManager.MATCH_ALL)
+        return context.packageManager.queryIntentActivities(query, PackageManager.MATCH_ALL)
             .mapNotNull { info ->
                 val appInfo = info.activityInfo?.applicationInfo ?: return@mapNotNull null
                 activity.packageManager.getApplicationLabel(appInfo).toString().trim()
@@ -26,7 +26,7 @@ object InstalledAppLauncher {
     }
 
     @Suppress("DEPRECATION")
-    fun launch(activity: Activity, requestedName: String): Result {
+    fun launch(context: Context, requestedName: String): Result {
         val wanted = VoiceAliasResolver.normalize(requestedName).trim()
         if (wanted.isBlank()) return Result.Failed("Не указано приложение")
 
@@ -52,7 +52,8 @@ object InstalledAppLauncher {
         return try {
             val launchIntent = activity.packageManager.getLaunchIntentForPackage(packageName)
                 ?: return Result.Failed("У приложения нет доступного экрана запуска")
-            activity.startActivity(launchIntent)
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(launchIntent)
             Result.Launched(match.second)
         } catch (error: Exception) {
             Result.Failed(error.message ?: "Android не разрешил запуск приложения")
