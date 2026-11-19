@@ -23,4 +23,20 @@ object AppCommandParser {
         if (target.isBlank() || target.length > 64) return null
         return OpenApp(target)
     }
+
+    data class YouTubeSearch(val query: String)
+
+    private val youtubeSearchCommands = listOf(
+        Regex("^\\s*(?:включи|найди|поищи|покажи)\\s+(?:мне\\s+)?(?:видео|ролик)\\s+(?:на\\s+)?(?:youtube|ютуб|YouTube)\\s+(.+?)\\s*[.!?]*\\s*$", RegexOption.IGNORE_CASE),
+        Regex("^\\s*(?:найди|поищи|включи|открой)\\s+(?:на\\s+)?(?:youtube|ютуб)\\s+(.+?)\\s*[.!?]*\\s*$", RegexOption.IGNORE_CASE)
+    )
+
+    fun parseYouTubeSearch(text: String): YouTubeSearch? {
+        if (text.isBlank() || text.length > 240) return null
+        val normalized = VoiceAliasResolver.normalize(text).trim()
+        val match = youtubeSearchCommands.firstNotNullOfOrNull { it.matchEntire(normalized) } ?: return null
+        val query = match.groupValues[1].trim().trimEnd('.', '!', '?', ',', ';', ':').trim()
+        if (query.isBlank() || query.length > 160) return null
+        return YouTubeSearch(query)
+    }
 }
