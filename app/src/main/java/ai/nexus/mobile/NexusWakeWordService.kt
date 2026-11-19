@@ -354,10 +354,13 @@ class NexusWakeWordService : Service() {
 
         val screen = NexusAccessibilityService.current?.describeActiveWindow()
             ?: "Служба специальных возможностей не подключена."
-        val observations = listOf(
-            "Installed launchable apps (exact visible labels): ${apps.joinToString(", ").take(1800)}",
-            "Initial screen: ${screen.take(1200)}"
-        )
+        val observations = buildList {
+            add("Installed launchable apps (exact visible labels): ${apps.joinToString(", ").take(1800)}")
+            if (apps.any { it.equals("MAX", ignoreCase = true) }) {
+                add("Voice alias: when the user says «Макс» as an app name, it refers to the installed app label «MAX».")
+            }
+            add("Initial screen: ${screen.take(1200)}")
+        }
         val loop = NexusAgentLoop(
             generate = { prompt -> engine.generate(prompt, 128) },
             execute = { plan, userConfirmed ->
@@ -394,8 +397,24 @@ class NexusWakeWordService : Service() {
                         delay(plan.milliseconds.toLong())
                         NexusExecutionOutcome(true, "Подождал ${plan.milliseconds} мс. Экран: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "недоступен"}")
                     }
-                    is NexusAiPlan.TapText -> NexusExecutionOutcome(false, "Для нажатия «${plan.exactLabel}» требуется подтверждение в приложении NEXUS.", requiresConfirmation = true)
-                    is NexusAiPlan.EnterText -> NexusExecutionOutcome(false, "Для ввода текста требуется подтверждение в приложении NEXUS.", requiresConfirmation = true)
+                    is NexusAiPlan.TapText -> {
+                        if (!userConfirmed) {
+                            NexusExecutionOutcome(false, "Подтверди нажатие «${plan.exactLabel}» в приложении NEXUS.", requiresConfirmation = true)
+                        } else {
+                            val access = NexusAccessibilityService.current
+                            val ok = access?.executeApprovedAction(NexusAction.TapVisibleText(plan.exactLabel), true) == true
+                            NexusExecutionOutcome(ok, if (ok) "Нажал «${plan.exactLabel}». Экран: ${access?.describeActiveWindow() ?: "недоступен"}" else "Не удалось нажать «${plan.exactLabel}».")
+                        }
+                    }
+                    is NexusAiPlan.EnterText -> {
+                        if (!userConfirmed) {
+                            NexusExecutionOutcome(false, "Подтверди ввод текста в приложении NEXUS.", requiresConfirmation = true)
+                        } else {
+                            val access = NexusAccessibilityService.current
+                            val ok = access?.executeApprovedAction(NexusAction.EnterText(plan.text), true) == true
+                            NexusExecutionOutcome(ok, if (ok) "Текст введён." else "Не удалось ввести текст в активное поле.")
+                        }
+                    }
                     is NexusAiPlan.Answer, is NexusAiPlan.Done, is NexusAiPlan.Unsupported ->
                         NexusExecutionOutcome(false, "Ответ обрабатывается планировщиком.")
                 }
