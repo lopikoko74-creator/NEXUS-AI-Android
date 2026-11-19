@@ -14,6 +14,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -440,10 +441,17 @@ class NexusWakeWordService : Service() {
         }
     }
 
-    private fun speak(message: String) {
+    private suspend fun speak(message: String) {
         if (message.isBlank()) return
-        if (ttsReady) {
-            textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "nexus-service-response")
+        try {
+            NexusNeuralVoice.speak(this, message)
+            NexusDiagnostics.record(this, "VOICE_TTS", "Ответ озвучен локальным нейросетевым голосом Piper Denis")
+        } catch (error: Exception) {
+            NexusDiagnostics.record(this, "VOICE_TTS_FALLBACK", error.stackTraceToString().take(1200))
+            withContext(Dispatchers.Main.immediate) {
+                if (ttsReady) textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "nexus-service-response")
+                broadcastStatus("Нейросетевой голос пока недоступен. Использую системный голос.")
+            }
         }
     }
 
