@@ -165,7 +165,7 @@ class NexusWakeWordService : Service() {
     }
 
 
-    private val partialFinalize = Runnable {
+    private val partialFinalize: Runnable = Runnable {
         if (!stopped && !sessionResolved && latestPartial.isNotBlank()) {
             val phrase = latestPartial.trim()
             sessionResolved = true
@@ -208,7 +208,7 @@ class NexusWakeWordService : Service() {
         }
     }
 
-    private val finalResultWatchdog = Runnable {
+    private val finalResultWatchdog: Runnable = Runnable {
         if (!stopped && finalResultPending) {
             finalResultPending = false
             sessionResolved = true
@@ -225,7 +225,7 @@ class NexusWakeWordService : Service() {
         }
     }
 
-    private val commandTimeout = Runnable {
+    private val commandTimeout: Runnable = Runnable {
         if (waitingForCommand && !stopped) {
             waitingForCommand = false
             updateNotification("Ожидаю слово «NEXUS»")
