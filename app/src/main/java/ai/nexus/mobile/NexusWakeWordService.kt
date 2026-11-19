@@ -34,6 +34,7 @@ class NexusWakeWordService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var waitingForCommand = false
+    private var executingCommand = false
     private var stopped = true
     private var listening = false
     private var restartScheduled = false
@@ -292,6 +293,11 @@ class NexusWakeWordService : Service() {
      */
     private fun deliverCommand(command: String) {
         hideFloatingOrb()
+        executingCommand = true
+        restartScheduled = false
+        handler.removeCallbacksAndMessages(null)
+        try { recognizer?.cancel() } catch (_: Exception) {}
+        listening = false
         serviceScope.launch {
             updateNotification("Выполняю команду…")
             broadcastStatus("Команда принята. Выполняю без открытия главного окна.")
@@ -304,6 +310,8 @@ class NexusWakeWordService : Service() {
             updateNotification("Ожидаю слово «NEXUS»")
             broadcastStatus(resultText)
             speak(resultText)
+            executingCommand = false
+            scheduleRestart(900L)
         }
     }
 
@@ -416,7 +424,7 @@ class NexusWakeWordService : Service() {
     }
 
     private fun scheduleRestart(delayMs: Long) {
-        if (stopped || restartScheduled) return
+        if (stopped || executingCommand || restartScheduled) return
         restartScheduled = true
         handler.postDelayed({
             restartScheduled = false
@@ -425,7 +433,7 @@ class NexusWakeWordService : Service() {
     }
 
     private fun startListening() {
-        if (stopped || listening || restartScheduled) return
+        if (stopped || executingCommand || listening || restartScheduled) return
         val current = recognizer ?: run {
             createRecognizer()
             recognizer
