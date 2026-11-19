@@ -165,11 +165,26 @@ class MainActivity : ComponentActivity() {
         onResult: (NexusAgentResult) -> Unit
     ) {
         val engine = NativeLlamaEngine.getInstance(this)
-        if (!engine.isModelLoaded()) {
-            onResult(NexusAgentResult.Failed("Локальная GGUF-модель не загружена. Открой настройки модели и нажми «Загрузить модель».", emptyList()))
+        val savedModel = getSharedPreferences("nexus_settings", MODE_PRIVATE)
+            .getString("model_file", null)?.let(::File)
+        if (!engine.isModelLoaded() && (savedModel == null || !savedModel.isFile)) {
+            onResult(NexusAgentResult.Failed("GGUF-модель ещё не подготовлена. Один раз выбери файл и нажми «Подготовить».", emptyList()))
             return
         }
         agentJob = lifecycleScope.launch {
+            // A wake-word command can arrive while the startup auto-load is still running.
+            // Wait for that single load instead of rejecting the user's command immediately.
+            if (!engine.isModelLoaded()) {
+                onEvent(NexusAgentEvent(NexusAgentEventType.THINKING, "Жду загрузку модели", "Команда сохранена; ожидаю завершения автоматической загрузки GGUF."))
+                val deadline = System.nanoTime() + 180_000_000_000L
+                while (!engine.isModelLoaded() && System.nanoTime() < deadline) {
+                    delay(250)
+                }
+            }
+            if (!engine.isModelLoaded()) {
+                onResult(NexusAgentResult.Failed("Автоматическая загрузка GGUF не завершилась за 3 минуты. Проверь память устройства и журнал модели.", emptyList()))
+                return@launch
+            }
             val installedApps = InstalledAppLauncher.listLaunchableApps(this@MainActivity)
             val screen = NexusAccessibilityService.current?.describeActiveWindow()
                 ?: "Служба специальных возможностей не подключена; доступен только запуск приложений."
