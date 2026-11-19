@@ -180,32 +180,37 @@ class NexusWakeWordService : Service() {
     }
 
     private fun handleRecognizedPhrase(phrase: String) {
-        val normalized = phrase.lowercase(Locale.forLanguageTag("ru-RU"))
-            .replace("ё", "е").replace(Regex("[^\\p{L}\\p{N} ]"), " ")
-            .trim()
+        val parsed = WakeWordCommandParser.parse(phrase, waitingForCommand)
         if (!waitingForCommand) {
-            val wakeDetected = normalized.split(Regex("\\s+")).any {
-                it in setOf("nexus", "нексус", "некcус", "некус")
+            if (!parsed.wakeWordDetected) {
+                broadcastStatus("Ключевое слово не обнаружено. Продолжаю ожидание.")
+                return
             }
-            if (wakeDetected) {
+            val inlineCommand = parsed.command
+            if (inlineCommand.isNullOrBlank()) {
                 waitingForCommand = true
                 updateNotification("NEXUS активирован — скажи команду")
                 broadcastStatus("Слушаю команду. У тебя 10 секунд.")
-            } else {
-                broadcastStatus("Ключевое слово не обнаружено. Продолжаю ожидание.")
+                return
             }
-        } else if (phrase.isNotBlank()) {
+            // One-breath command: preserve everything spoken after the wake word.
             waitingForCommand = false
-            handler.removeCallbacks(commandTimeout)
-            val command = phrase.replace(Regex("(?i)^\\s*(nexus|нексус|некус)[, ]*"), "").trim()
-            if (command.isNotBlank()) {
-                sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
-                broadcastStatus("Команда передана NEXUS.")
-            } else {
-                broadcastStatus("Команда не распознана. Снова ожидаю «NEXUS».")
-            }
+            sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, inlineCommand))
             updateNotification("Ожидаю слово «NEXUS»")
+            broadcastStatus("Команда передана NEXUS.")
+            return
         }
+
+        waitingForCommand = false
+        handler.removeCallbacks(commandTimeout)
+        val command = parsed.command
+        if (!command.isNullOrBlank()) {
+            sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
+            broadcastStatus("Команда передана NEXUS.")
+        } else {
+            broadcastStatus("Команда не распознана. Снова ожидаю «NEXUS».")
+        }
+        updateNotification("Ожидаю слово «NEXUS»")
     }
 
     private val finalResultWatchdog: Runnable = Runnable {
