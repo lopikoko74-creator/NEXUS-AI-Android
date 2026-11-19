@@ -300,6 +300,29 @@ class MainActivity : ComponentActivity() {
                 addLine(ChatRole.USER, "Вы", request)
                 busy = true
 
+                val youtubeSearch = AppCommandParser.parseYouTubeSearch(request)
+                if (youtubeSearch != null) {
+                    val searchUri = Uri.parse("https://www.youtube.com/results").buildUpon()
+                        .appendQueryParameter("search_query", youtubeSearch.query)
+                        .build()
+                    val youtubeIntent = Intent(Intent.ACTION_VIEW, searchUri).setPackage("com.google.android.youtube")
+                    try {
+                        startActivity(youtubeIntent)
+                        busy = false
+                        addLine(ChatRole.ASSISTANT, "Открываю YouTube", "Ищу: «${youtubeSearch.query}».")
+                        textToSpeech?.speak("Ищу ${youtubeSearch.query} на YouTube.", TextToSpeech.QUEUE_FLUSH, null, "nexus-youtube-search")
+                    } catch (_: android.content.ActivityNotFoundException) {
+                        try {
+                            startActivity(Intent(Intent.ACTION_VIEW, searchUri))
+                            busy = false
+                            addLine(ChatRole.ASSISTANT, "Открываю поиск YouTube", "Приложение YouTube не найдено; открыл поиск в браузере.")
+                            textToSpeech?.speak("Открываю поиск YouTube в браузере.", TextToSpeech.QUEUE_FLUSH, null, "nexus-youtube-search")
+                        } catch (error: Exception) {
+                            busy = false
+                            addLine(ChatRole.ASSISTANT, "Не удалось открыть YouTube", error.message ?: "Android не нашёл приложение или браузер.")
+                        }
+                    }
+                } else {
                 val parsed = AppCommandParser.parse(request)
                 if (parsed != null) {
                     when (val launch = InstalledAppLauncher.launch(this@MainActivity, parsed.appName)) {
@@ -318,6 +341,7 @@ class MainActivity : ComponentActivity() {
                     }
                 } else {
                     runAgentFallback(request, ::showEvent, ::finishAgent)
+                }
                 }
             }
 
