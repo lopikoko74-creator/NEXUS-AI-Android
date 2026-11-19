@@ -331,7 +331,8 @@ class NexusWakeWordService : Service() {
             }
         }
 
-        AppCommandParser.parse(request)?.let { parsed ->
+        val apps = InstalledAppLauncher.listLaunchableApps(this)
+        AppCommandParser.parse(request, apps)?.let { parsed ->
             return when (val launched = InstalledAppLauncher.launch(this, parsed.appName)) {
                 is InstalledAppLauncher.Result.Launched -> "Открыл приложение «${launched.appLabel}»."
                 is InstalledAppLauncher.Result.NotFound -> "Не нашёл установленное приложение «${launched.requestedName}»."
@@ -351,7 +352,6 @@ class NexusWakeWordService : Service() {
             engine.loadModel(model)
         }
 
-        val apps = InstalledAppLauncher.listLaunchableApps(this)
         val screen = NexusAccessibilityService.current?.describeActiveWindow()
             ?: "Служба специальных возможностей не подключена."
         val observations = listOf(
@@ -363,7 +363,14 @@ class NexusWakeWordService : Service() {
             execute = { plan, userConfirmed ->
                 when (plan) {
                     is NexusAiPlan.OpenApp -> when (val opened = InstalledAppLauncher.launch(this@NexusWakeWordService, plan.appName)) {
-                        is InstalledAppLauncher.Result.Launched -> NexusExecutionOutcome(true, "Открыл приложение «${opened.appLabel}».", taskCompleted = true)
+                        is InstalledAppLauncher.Result.Launched -> {
+                            // Opening an app is an intermediate step when the user
+                            // asked for something else inside it (e.g. find a chat).
+                            delay(900L)
+                            val currentScreen = NexusAccessibilityService.current?.describeActiveWindow()
+                                ?: "Служба специальных возможностей не подключена."
+                            NexusExecutionOutcome(true, "Открыл приложение «${opened.appLabel}». Текущий экран: ${currentScreen.take(900)}")
+                        }
                         is InstalledAppLauncher.Result.NotFound -> NexusExecutionOutcome(false, "Приложение «${opened.requestedName}» не найдено.")
                         is InstalledAppLauncher.Result.Failed -> NexusExecutionOutcome(false, opened.reason)
                     }
