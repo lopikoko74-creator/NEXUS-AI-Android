@@ -29,7 +29,6 @@ The helper creates a USB ADB forward from host loopback port 8766 to the phone's
 
 - Status: python scripts/nexus_bridge.py status
 - Local generation: python scripts/nexus_bridge.py generate --prompt "..." --max-tokens 128
-- Cancel current generation: python scripts/nexus_bridge.py cancel
 
 Only send prompts the user has authorized. Generation is local to the phone. Do not send secrets, passwords, or unrelated personal data unless the user explicitly requests it.
 
