@@ -1,12 +1,14 @@
-name: NEXUS CONTROL checks
+name: NEXUS CONTROL and Agensi skill checks
 on:
   push:
     paths:
       - "nexus-control/**"
+      - "agensi-skill/**"
       - ".github/workflows/nexus-control-check.yml"
   pull_request:
     paths:
       - "nexus-control/**"
+      - "agensi-skill/**"
       - ".github/workflows/nexus-control-check.yml"
 jobs:
   python-check:
@@ -16,10 +18,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: python -m py_compile nexus-control/agent/nexus_agent.py nexus-control/install/windows/install-core.py
+      - name: Compile Python clients
+        run: |
+          python -m py_compile nexus-control/agent/nexus_agent.py nexus-control/install/windows/install-core.py agensi-skill/scripts/nexus_bridge.py
       - run: bash -n nexus-control/START-NEXUS.sh nexus-control/install/linux/install.sh nexus-control/install/usb/connect-android.sh
       - run: test -f nexus-control/START-NEXUS.bat && test -f nexus-control/install/windows/one-click.ps1
       - run: PYTHONPATH=nexus-control/agent python -m unittest discover -s nexus-control/agent/tests -v
+      - name: Test Agensi skill client
+        run: python -m unittest discover -s agensi-skill/tests -v
+      - name: Validate Agensi package contents
+        run: |
+          test -f agensi-skill/SKILL.md
+          test -f agensi-skill/scripts/nexus_bridge.py
+          test -f agensi-skill/references/setup-and-security.md
+          test "$(wc -c < agensi-skill/scripts/nexus_bridge.py)" -lt 20000
+          ! find agensi-skill -type f | grep -E '\.(apk|jar|so|dll|jks|keystore)$'
       - name: Package PC dashboard
         run: zip -r NEXUS-CONTROL-PC.zip nexus-control
       - name: Upload install bundle
