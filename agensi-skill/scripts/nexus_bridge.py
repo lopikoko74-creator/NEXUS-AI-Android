@@ -84,7 +84,7 @@ def main() -> int:
     gen = sub.add_parser("generate", help="Generate with the already-loaded local model")
     gen.add_argument("--prompt", required=True)
     gen.add_argument("--max-tokens", type=int, default=DEFAULT_TOKENS)
-     args = parser.parse_args()
+    args = parser.parse_args()
     serial = None
     try:
         serial = ensure_forward(args.adb)
@@ -97,7 +97,7 @@ def main() -> int:
                 raise BridgeError("max-tokens must be between 16 and 160.")
             result = request("/v1/generate", "POST",
                              {"prompt": args.prompt, "max_tokens": args.max_tokens})
-         print(json.dumps(result, ensure_ascii=False, indent=2))
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         if result.get("ok") is False or result.get("error"):
             return 2
         return 0
