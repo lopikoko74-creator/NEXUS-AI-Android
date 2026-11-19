@@ -1,6 +1,6 @@
 # Agensi integration — implementation plan
 
-Status: Phase 0 scaffold committed on this feature branch. The Agensi skill/client package and CI checks exist; the Android runtime bridge is not implemented, so the skill is not yet usable or publishable.
+Status: First implementation pass committed on this feature branch. The Android loopback service, user controls, revocable token UI, USB client, skill scaffold and CI checks are present. Build and device-level validation are still required; the skill is not yet ready for Agensi submission.
 
 ## Goal
 
