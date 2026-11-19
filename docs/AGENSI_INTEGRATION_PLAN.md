@@ -1,6 +1,6 @@
 # Agensi integration — implementation plan
 
-Status: design checkpoint; no runtime bridge or Agensi listing is implemented yet.
+Status: Phase 0 scaffold committed on this feature branch. The Agensi skill/client package and CI checks exist; the Android runtime bridge is not implemented, so the skill is not yet usable or publishable.
 
 ## Goal
 
@@ -60,12 +60,12 @@ Wi-Fi transport is out of scope for the first release.
 
 ### Phase 3 — Agensi skill package
 
-The ZIP will contain only text files, for example:
+The current scaffold is in agensi-skill/ and contains only text files:
 - `SKILL.md`
 - `scripts/nexus_bridge.py` (Python standard library only; below 20 KB)
-- `references/security-and-setup.md`
+- `references/setup-and-security.md`
 
-The skill will check prerequisites, explain how to start the bridge in NEXUS, verify authenticated status, submit bounded prompts, and clearly report when the phone/model/bridge is unavailable. It must never claim that an action ran when the bridge did not confirm it.
+The current Python standard-library client checks for exactly one authorized ADB device, creates a temporary USB forward, requires NEXUS_BRIDGE_TOKEN from the environment, bounds prompts/token limits and removes the forward after each call. Unit tests and CI package checks have been added. The skill explicitly warns that the Android endpoints are not yet present and must not be listed until the app-side implementation is complete.
 
 ## Acceptance tests
 
@@ -82,4 +82,4 @@ The skill will check prerequisites, explain how to start the bridge in NEXUS, ve
 
 ## Release rule
 
-Do not submit the Agensi listing until the Android bridge, desktop helper, ZIP validation and end-to-end test all pass. The first listing should be free while compatibility and user experience are validated; pricing can be revisited after real usage.
+Do not submit the Agensi listing until the Android bridge, desktop helper, ZIP validation and end-to-end test all pass. The first listing should be free while compatibility and user experience are validated; pricing can be revisited after real usage. Current branch work is scaffolding only and does not satisfy the release rule.
