@@ -11,7 +11,8 @@ object WakeWordCommandParser {
     )
 
     private val wakeWord = Regex(
-        "(?i)(?<![\\p{L}\\p{N}_])(?:nexus|нексус|некcус|некус)(?![\\p{L}\\p{N}_])"
+        "(?<![\\p{L}\\p{N}_])(?:nexus|нексус|некcус|некус)(?![\\p{L}\\p{N}_])",
+        RegexOption.IGNORE_CASE
     )
     private val leadingWakeWord = Regex(
         "^\\s*(?:nexus|нексус|некcус|некус)(?:\\s*[,;:—-]\\s*|\\s+)?",
