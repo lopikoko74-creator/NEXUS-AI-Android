@@ -14,7 +14,6 @@ All routes require Authorization: Bearer <random-token>.
 
 - GET /v1/status: returns {"ok":true,"bridge":"running","model_loaded":true} plus non-sensitive model metadata.
 - POST /v1/generate: JSON {"prompt":"...","max_tokens":128}; returns {"ok":true,"text":"...","generation_ms":123}.
-- POST /v1/cancel: cancels an active generation where native cancellation is supported; returns an explicit result.
 
 The Android implementation must enforce loopback binding, a high-entropy revocable token, request and prompt limits, a single active generation, bounded response size, no prompt/token logging, and an explicit user-controlled foreground-service lifecycle. Model loading/unloading remains in the NEXUS UI.
 
