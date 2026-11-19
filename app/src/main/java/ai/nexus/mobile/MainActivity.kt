@@ -95,7 +95,10 @@ private data class ChatLine(
 
 class MainActivity : ComponentActivity() {
     private var agentJob: Job? = null
-    companion object { const val EXTRA_WAKE_WORD_OPEN = "nexus_wake_word_open" }
+    companion object {
+        const val EXTRA_WAKE_WORD_OPEN = "nexus_wake_word_open"
+        const val EXTRA_WAKE_WORD_COMMAND = "nexus_wake_word_command"
+    }
     private var textToSpeech: TextToSpeech? = null
     private fun createAgentLoop(onEvent: (NexusAgentEvent) -> Unit = {}): NexusAgentLoop {
         val engine = NativeLlamaEngine.getInstance(this)
@@ -203,6 +206,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_WAKE_WORD_COMMAND)?.takeIf { it.isNotBlank() }?.let { command ->
+            sendBroadcast(Intent(NexusWakeWordService.ACTION_COMMAND).setPackage(packageName)
+                .putExtra(NexusWakeWordService.EXTRA_COMMAND, command))
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent?.getBooleanExtra(EXTRA_WAKE_WORD_OPEN, false) == true) {
@@ -251,6 +263,7 @@ class MainActivity : ComponentActivity() {
             var busy by remember { mutableStateOf(false) }
             var listening by remember { mutableStateOf(false) }
             var wakeOverlay by remember { mutableStateOf(intent?.getBooleanExtra(EXTRA_WAKE_WORD_OPEN, false) == true) }
+            var pendingWakeCommand by remember { mutableStateOf(intent?.getStringExtra(EXTRA_WAKE_WORD_COMMAND)) }
             var voiceStatus by remember { mutableStateOf("Голосовое управление готово") }
             var showModelSettings by remember { mutableStateOf(false) }
             var showUpdateSettings by remember { mutableStateOf(false) }
@@ -345,6 +358,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+
+            LaunchedEffect(pendingWakeCommand) {
+                val spokenCommand = pendingWakeCommand
+                if (!spokenCommand.isNullOrBlank()) {
+                    pendingWakeCommand = null
+                    submitRequest(spokenCommand)
+                }
+            }
 
             DisposableEffect(Unit) {
                 val receiver = object : android.content.BroadcastReceiver() {
@@ -656,6 +677,15 @@ class MainActivity : ComponentActivity() {
                                     }) { Text("ЭКСТРЕННО ВЫКЛЮЧИТЬ NEXUS") }
                                     OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                         Text("Настройки специальных возможностей")
+                                    }
+                                    OutlinedButton(onClick = {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this@MainActivity)) {
+                                            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                                        } else {
+                                            Toast.makeText(this@MainActivity, "Плавающий шар NEXUS уже разрешён.", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }) {
+                                        Text(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this@MainActivity)) "Плавающий шар разрешён" else "Разрешить шар поверх приложений")
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(onClick = {
