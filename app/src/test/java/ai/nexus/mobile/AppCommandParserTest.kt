@@ -30,4 +30,12 @@ class AppCommandParserTest {
     fun rejectsExcessivelyLongTarget() {
         assertNull(AppCommandParser.parse("открой " + "а".repeat(65)))
     }
+
+    @Test
+    fun parsesNaturalYouTubeSearchCommands() {
+        assertEquals("josping GTA 6", AppCommandParser.parseYouTubeSearch("Включи видео на YouTube josping GTA 6")?.query)
+        assertEquals("обзор Poco F6", AppCommandParser.parseYouTubeSearch("Найди на ютубе обзор Poco F6")?.query)
+        assertNull(AppCommandParser.parseYouTubeSearch("Включи видео"))
+        assertNull(AppCommandParser.parseYouTubeSearch("удали видео на YouTube"))
+    }
 }
