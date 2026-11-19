@@ -17,7 +17,7 @@ object InstalledAppLauncher {
         return context.packageManager.queryIntentActivities(query, PackageManager.MATCH_ALL)
             .mapNotNull { info ->
                 val appInfo = info.activityInfo?.applicationInfo ?: return@mapNotNull null
-                activity.packageManager.getApplicationLabel(appInfo).toString().trim()
+                context.packageManager.getApplicationLabel(appInfo).toString().trim()
                     .takeIf { it.isNotEmpty() }
             }
             .distinctBy { VoiceAliasResolver.normalize(it).lowercase() }
@@ -31,7 +31,7 @@ object InstalledAppLauncher {
         if (wanted.isBlank()) return Result.Failed("Не указано приложение")
 
         val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val candidates = activity.packageManager.queryIntentActivities(
+        val candidates = context.packageManager.queryIntentActivities(
             query,
             PackageManager.MATCH_ALL
         )
@@ -39,7 +39,7 @@ object InstalledAppLauncher {
         val match = candidates
             .mapNotNull { resolveInfo ->
                 val appInfo = resolveInfo.activityInfo?.applicationInfo ?: return@mapNotNull null
-                val label = activity.packageManager.getApplicationLabel(appInfo).toString()
+                val label = context.packageManager.getApplicationLabel(appInfo).toString()
                 val normalizedLabel = VoiceAliasResolver.normalize(label).trim()
                 Triple(resolveInfo, label, normalizedLabel)
             }
@@ -50,7 +50,7 @@ object InstalledAppLauncher {
         val packageName = match.first.activityInfo?.packageName
             ?: return Result.Failed("Не удалось определить пакет приложения")
         return try {
-            val launchIntent = activity.packageManager.getLaunchIntentForPackage(packageName)
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(packageName)
                 ?: return Result.Failed("У приложения нет доступного экрана запуска")
             launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(launchIntent)
