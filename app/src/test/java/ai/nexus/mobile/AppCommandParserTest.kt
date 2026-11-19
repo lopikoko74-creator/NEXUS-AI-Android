@@ -32,6 +32,16 @@ class AppCommandParserTest {
     }
 
     @Test
+    fun directLaunchRequiresAnExactInstalledAppMatchWhenInventoryIsProvided() {
+        assertEquals("MAX", AppCommandParser.parse("Открой приложение Макс", listOf("MAX", "Telegram"))?.appName)
+        assertNull(AppCommandParser.parse(
+            "Открой приложение Макс и найди чат Ананасик",
+            listOf("MAX", "Telegram")
+        ))
+        assertNull(AppCommandParser.parse("Открой неизвестное приложение", listOf("MAX", "Telegram")))
+    }
+
+    @Test
     fun parsesNaturalYouTubeSearchCommands() {
         assertEquals("josping GTA 6", AppCommandParser.parseYouTubeSearch("Включи видео на YouTube josping GTA 6")?.query)
         assertEquals("обзор Poco F6", AppCommandParser.parseYouTubeSearch("Найди на ютубе обзор Poco F6")?.query)
