@@ -32,6 +32,7 @@ class NexusWakeWordService : Service() {
     private var finalResultPending = false
     private var sessionResolved = false
     private var latestPartial = ""
+    private var floatingOverlay: NexusFloatingOrbOverlay? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -190,12 +191,14 @@ class NexusWakeWordService : Service() {
             if (inlineCommand.isNullOrBlank()) {
                 waitingForCommand = true
                 updateNotification("NEXUS активирован — скажи команду")
-                broadcastStatus("Слушаю команду. У тебя 10 секунд.")
+                showFloatingOrb()
+                broadcastStatus(if (floatingOverlay != null) "Слушаю команду. У тебя 10 секунд." else "Слушаю команду. Для шара поверх рабочего стола разреши NEXUS показываться поверх других приложений.")
                 return
             }
             // One-breath command: preserve everything spoken after the wake word.
             waitingForCommand = false
-            sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, inlineCommand))
+            hideFloatingOrb()
+            deliverCommand(inlineCommand)
             updateNotification("Ожидаю слово «NEXUS»")
             broadcastStatus("Команда передана NEXUS.")
             return
@@ -203,9 +206,10 @@ class NexusWakeWordService : Service() {
 
         waitingForCommand = false
         handler.removeCallbacks(commandTimeout)
+        hideFloatingOrb()
         val command = parsed.command
         if (!command.isNullOrBlank()) {
-            sendBroadcast(Intent(ACTION_COMMAND).setPackage(packageName).putExtra(EXTRA_COMMAND, command))
+            deliverCommand(command)
             broadcastStatus("Команда передана NEXUS.")
         } else {
             broadcastStatus("Команда не распознана. Снова ожидаю «NEXUS».")
@@ -220,6 +224,7 @@ class NexusWakeWordService : Service() {
             handler.removeCallbacks(commandTimeout)
             if (waitingForCommand) {
                 waitingForCommand = false
+                hideFloatingOrb()
                 updateNotification("Ожидаю слово «NEXUS»")
             }
             NexusDiagnostics.record(this, "VOICE_ERROR", "Тайм-аут: onEndOfSpeech не получил onResults/onError за ${FINAL_RESULT_TIMEOUT_MS} мс; перезапускаю распознаватель")
@@ -233,6 +238,7 @@ class NexusWakeWordService : Service() {
     private val commandTimeout: Runnable = Runnable {
         if (waitingForCommand && !stopped) {
             waitingForCommand = false
+            hideFloatingOrb()
             updateNotification("Ожидаю слово «NEXUS»")
             broadcastStatus("Окно команды закрыто. Снова ожидаю «NEXUS».")
             handler.removeCallbacks(finalResultWatchdog)
@@ -243,6 +249,39 @@ class NexusWakeWordService : Service() {
             try { recognizer?.cancel() } catch (_: Exception) {}
             listening = false
             scheduleRestart(900L)
+        }
+    }
+
+
+    private fun showFloatingOrb() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            !android.provider.Settings.canDrawOverlays(this)) {
+            broadcastStatus("NEXUS активирован. Разреши показ поверх других приложений в настройках NEXUS, чтобы видеть шар на рабочем столе.")
+            return
+        }
+        val overlay = floatingOverlay ?: NexusFloatingOrbOverlay(this).also { floatingOverlay = it }
+        if (!overlay.show()) {
+            broadcastStatus("Не удалось показать плавающий шар. Проверь разрешение «Поверх других приложений».")
+        }
+    }
+
+    private fun hideFloatingOrb() {
+        floatingOverlay?.hide()
+        floatingOverlay = null
+    }
+
+    private fun deliverCommand(command: String) {
+        hideFloatingOrb()
+        val launch = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(MainActivity.EXTRA_WAKE_WORD_COMMAND, command)
+        }
+        try {
+            startActivity(launch)
+            broadcastStatus("Команда передана NEXUS.")
+        } catch (error: Exception) {
+            NexusDiagnostics.record(this, "VOICE_ERROR", "Не удалось открыть NEXUS для выполнения команды: ${error.message}")
+            broadcastStatus("Команда услышана, но Android не разрешил открыть NEXUS. Открой приложение и повтори команду.")
         }
     }
 
@@ -302,6 +341,7 @@ class NexusWakeWordService : Service() {
     private fun stopListening() {
         stopped = true
         waitingForCommand = false
+        hideFloatingOrb()
         restartScheduled = false
         handler.removeCallbacksAndMessages(null)
         destroyRecognizer()
