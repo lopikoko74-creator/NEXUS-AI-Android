@@ -90,8 +90,8 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeLoadModel(JNIEnv *env, jobject, jst
 
     llama_context_params context_params = llama_context_default_params();
     context_params.n_ctx = 2048;
-    context_params.n_batch = 512;
-    context_params.n_ubatch = 128;
+    context_params.n_batch = 128;
+    context_params.n_ubatch = 64;
     const unsigned int hardware_threads = std::thread::hardware_concurrency();
     const int inference_threads = static_cast<int>(std::max(2u, std::min(6u, hardware_threads == 0 ? 6u : hardware_threads)));
     context_params.n_threads = inference_threads;
@@ -192,7 +192,7 @@ Java_ai_nexus_mobile_NativeLlamaEngine_nativeGenerate(JNIEnv *env, jobject, jstr
     // Prefill in chunks no larger than n_batch (512). Sending the entire
     // prompt in one batch can exceed llama_context_params.n_batch and fail
     // during prompt evaluation even when the prompt fits inside n_ctx.
-    constexpr int32_t kPromptBatchSize = 512;
+    constexpr int32_t kPromptBatchSize = 64;
     int32_t decode_result = 0;
     for (int32_t offset = 0; offset < prompt_count; offset += kPromptBatchSize) {
         const int32_t chunk_size = std::min(kPromptBatchSize, prompt_count - offset);
