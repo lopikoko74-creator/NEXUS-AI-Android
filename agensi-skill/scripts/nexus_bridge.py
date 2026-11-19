@@ -86,8 +86,9 @@ def main() -> int:
     gen.add_argument("--max-tokens", type=int, default=DEFAULT_TOKENS)
     sub.add_parser("cancel", help="Cancel the active generation")
     args = parser.parse_args()
+    serial = None
     try:
-        ensure_forward(args.adb)
+        serial = ensure_forward(args.adb)
         if args.command == "status":
             result = request("/v1/status")
         elif args.command == "generate":
@@ -106,6 +107,10 @@ def main() -> int:
     except BridgeError as exc:
         print(f"NEXUS: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if serial:
+            subprocess.run([args.adb, "-s", serial, "forward", "--remove", f"tcp:{PORT}"],
+                           capture_output=True, text=True, timeout=10)
 
 if __name__ == "__main__":
     raise SystemExit(main())
