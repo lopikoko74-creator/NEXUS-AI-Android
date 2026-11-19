@@ -241,6 +241,9 @@ class MainActivity : ComponentActivity() {
             var showUpdateSettings by remember { mutableStateOf(false) }
             var showDiagnostics by remember { mutableStateOf(false) }
             var diagnosticsText by remember { mutableStateOf("") }
+            var bridgeActive by remember { mutableStateOf(false) }
+            var bridgeToken by remember { mutableStateOf(prefs.getString(NexusLocalBridgeService.KEY_TOKEN, null)) }
+            var bridgeStatus by remember { mutableStateOf("Мост выключен. Он доступен только по USB ADB.") }
             var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
             var chatLines by remember {
                 mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
@@ -587,6 +590,46 @@ class MainActivity : ComponentActivity() {
                                     }) { Text("ЭКСТРЕННО ВЫКЛЮЧИТЬ NEXUS") }
                                     OutlinedButton(onClick = { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }) {
                                         Text("Настройки специальных возможностей")
+                                    }
+                                    Text("NEXUS Local Bridge", style = MaterialTheme.typography.titleMedium)
+                                    Text(bridgeStatus, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (bridgeToken != null && bridgeActive) {
+                                        Text("Токен доступа (секретный):", style = MaterialTheme.typography.labelSmall)
+                                        Text(bridgeToken.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                                        OutlinedButton(onClick = {
+                                            val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                                            clipboard.setPrimaryClip(ClipData.newPlainText("NEXUS Local Bridge token", bridgeToken.orEmpty()))
+                                            Toast.makeText(this@MainActivity, "Токен скопирован. Не отправляй его в чат.", Toast.LENGTH_LONG).show()
+                                        }) { Text("Копировать токен") }
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            enabled = !bridgeActive && NativeLlamaEngine.getInstance(this@MainActivity).isModelLoaded(),
+                                            onClick = {
+                                                try {
+                                                    val tokenBytes = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+                                                    val token = android.util.Base64.encodeToString(tokenBytes, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+                                                    prefs.edit().putString(NexusLocalBridgeService.KEY_TOKEN, token).apply()
+                                                    bridgeToken = token
+                                                    val bridgeIntent = Intent(this@MainActivity, NexusLocalBridgeService::class.java).setAction(NexusLocalBridgeService.ACTION_START)
+                                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(bridgeIntent) else startService(bridgeIntent)
+                                                    bridgeActive = true
+                                                    bridgeStatus = "Активен на 127.0.0.1:8766. Подключайся с ПК через USB ADB forward."
+                                                } catch (error: Exception) {
+                                                    bridgeStatus = "Не удалось запустить мост: ${error.message ?: error.javaClass.simpleName}"
+                                                }
+                                            }
+                                        ) { Text("Включить Local Bridge") }
+                                        OutlinedButton(
+                                            enabled = bridgeActive || bridgeToken != null,
+                                            onClick = {
+                                                stopService(Intent(this@MainActivity, NexusLocalBridgeService::class.java))
+                                                prefs.edit().remove(NexusLocalBridgeService.KEY_TOKEN).apply()
+                                                bridgeToken = null
+                                                bridgeActive = false
+                                                bridgeStatus = "Мост выключен, старый токен отозван."
+                                            }
+                                        ) { Text("Выключить и отозвать") }
                                     }
                                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Button(onClick = {
