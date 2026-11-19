@@ -12,7 +12,12 @@ object AppCommandParser {
         RegexOption.IGNORE_CASE
     )
 
-    fun parse(text: String): OpenApp? {
+    /**
+     * When installedApps is supplied, only return a direct-launch intent when the
+     * complete spoken target matches one installed app label. Compound requests
+     * such as "open MAX and find a chat" must be left to the agent.
+     */
+    fun parse(text: String, installedApps: List<String>? = null): OpenApp? {
         if (text.isBlank()) return null
         val normalized = VoiceAliasResolver.normalize(text)
         val match = openCommand.matchEntire(normalized) ?: return null
@@ -21,7 +26,16 @@ object AppCommandParser {
             .trimEnd('.', '!', '?', ',', ';', ':')
             .trim()
         if (target.isBlank() || target.length > 64) return null
-        return OpenApp(target)
+        if (installedApps == null) return OpenApp(target)
+
+        fun appKey(value: String): String = VoiceAliasResolver.normalize(value)
+            .lowercase()
+            .replace("макс", "max")
+            .filter { it.isLetterOrDigit() }
+
+        val installedLabel = installedApps.firstOrNull { appKey(it) == appKey(target) }
+            ?: return null
+        return OpenApp(installedLabel)
     }
 
     data class YouTubeSearch(val query: String)
