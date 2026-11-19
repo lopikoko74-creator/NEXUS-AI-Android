@@ -402,6 +402,36 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // Automatically restore the previously imported GGUF on every app start.
+            // The file remains in app-private storage; only the in-memory model is reloaded.
+            LaunchedEffect(modelFileStatus) {
+                val file = prefs.getString("model_file", null)?.let(::File)
+                val engine = NativeLlamaEngine.getInstance(this@MainActivity)
+                if (file != null && file.isFile && !engine.isModelLoaded() && !modelLoading) {
+                    modelLoading = true
+                    modelProgress = 0f
+                    engineStatus = "Автоматически загружаю сохранённую модель в RAM…"
+                    NexusDiagnostics.record(this@MainActivity, "MODEL", "Автозагрузка сохранённой GGUF: ${file.name}")
+                    try {
+                        val info = engine.loadModel(file) { progress ->
+                            modelProgress = progress
+                            engineStatus = "Автозагрузка модели: ${(progress * 100).toInt()}%"
+                        }
+                        engineStatus = "Модель автоматически загружена: $info"
+                        NexusDiagnostics.record(this@MainActivity, "MODEL", "Автозагрузка завершена: $info")
+                    } catch (error: Throwable) {
+                        engineStatus = "Автозагрузка не удалась: ${error.message ?: error.javaClass.simpleName}. Можно повторить вручную."
+                        NexusDiagnostics.record(this@MainActivity, "MODEL_ERROR", engineStatus)
+                    } finally {
+                        modelLoading = false
+                    }
+                } else if (engine.isModelLoaded()) {
+                    engineStatus = "Сохранённая модель уже активна в памяти."
+                } else if (file == null || !file.isFile) {
+                    engineStatus = "Модель ещё не подготовлена. Выбери GGUF и нажми «Подготовить» один раз."
+                }
+            }
+
             LaunchedEffect(chatLines.size) {
                 if (chatLines.isNotEmpty()) listState.animateScrollToItem(chatLines.lastIndex)
             }
