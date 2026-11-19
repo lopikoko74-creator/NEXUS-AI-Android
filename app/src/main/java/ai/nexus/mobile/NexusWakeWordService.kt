@@ -87,6 +87,11 @@ class NexusWakeWordService : Service() {
     private val listener = object : RecognitionListener {
         override fun onReadyForSpeech(params: android.os.Bundle?) {
             listening = true
+            if (waitingForCommand) {
+                // Start the command window only when the recognizer is actually ready.
+                handler.removeCallbacks(commandTimeout)
+                handler.postDelayed(commandTimeout, COMMAND_WINDOW_MS)
+            }
             broadcastStatus(if (waitingForCommand) "NEXUS услышал. Скажи команду (до 10 секунд)." else "Фоновое ожидание: скажи «NEXUS».")
         }
         override fun onBeginningOfSpeech() = Unit
@@ -94,6 +99,7 @@ class NexusWakeWordService : Service() {
         override fun onBufferReceived(buffer: ByteArray?) = Unit
         override fun onEndOfSpeech() {
             listening = false
+            handler.removeCallbacks(commandTimeout)
             finalResultPending = true
             NexusDiagnostics.record(this@NexusWakeWordService, "VOICE", "onEndOfSpeech: ожидание финального результата")
             broadcastStatus("Обрабатываю речь…")
@@ -185,8 +191,6 @@ class NexusWakeWordService : Service() {
                 waitingForCommand = true
                 updateNotification("NEXUS активирован — скажи команду")
                 broadcastStatus("Слушаю команду. У тебя 10 секунд.")
-                handler.removeCallbacks(commandTimeout)
-                handler.postDelayed(commandTimeout, COMMAND_WINDOW_MS)
             } else {
                 broadcastStatus("Ключевое слово не обнаружено. Продолжаю ожидание.")
             }
@@ -207,6 +211,12 @@ class NexusWakeWordService : Service() {
     private val finalResultWatchdog = Runnable {
         if (!stopped && finalResultPending) {
             finalResultPending = false
+            sessionResolved = true
+            handler.removeCallbacks(commandTimeout)
+            if (waitingForCommand) {
+                waitingForCommand = false
+                updateNotification("Ожидаю слово «NEXUS»")
+            }
             NexusDiagnostics.record(this, "VOICE_ERROR", "Тайм-аут: onEndOfSpeech не получил onResults/onError за ${FINAL_RESULT_TIMEOUT_MS} мс; перезапускаю распознаватель")
             broadcastStatus("Распознаватель завис после окончания речи. Перезапускаю голосовой модуль.")
             consecutiveErrors++
@@ -221,8 +231,11 @@ class NexusWakeWordService : Service() {
             updateNotification("Ожидаю слово «NEXUS»")
             broadcastStatus("Окно команды закрыто. Снова ожидаю «NEXUS».")
             handler.removeCallbacks(finalResultWatchdog)
-        finalResultPending = false
-        try { recognizer?.cancel() } catch (_: Exception) {}
+            finalResultPending = false
+            // Mark this session resolved before cancel(): Android may report
+            // ERROR_CLIENT for our own cancellation; that is not a real failure.
+            sessionResolved = true
+            try { recognizer?.cancel() } catch (_: Exception) {}
             listening = false
             scheduleRestart(900L)
         }
