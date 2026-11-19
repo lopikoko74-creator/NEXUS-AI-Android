@@ -3,6 +3,7 @@ package ai.nexus.mobile
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.os.Build
@@ -405,7 +406,11 @@ class NexusWakeWordService : Service() {
             is NexusAgentResult.Completed -> result.summary
             is NexusAgentResult.Unsupported -> result.reason
             is NexusAgentResult.Failed -> result.reason
-            is NexusAgentResult.AwaitingConfirmation -> result.explanation + " Открой NEXUS, чтобы продолжить с подтверждением."
+            is NexusAgentResult.AwaitingConfirmation -> {
+                NexusPendingActionStore.pending = result.pending
+                updateNotification("Нужно подтверждение. Нажми, чтобы продолжить.")
+                result.explanation + " Нажми на уведомление NEXUS, чтобы подтвердить действие."
+            }
         }
     }
 
@@ -491,14 +496,21 @@ class NexusWakeWordService : Service() {
         }
     }
 
-    private fun buildNotification(message: String): Notification =
-        NotificationCompat.Builder(this, CHANNEL_ID)
+    private fun buildNotification(message: String): Notification {
+        val openApp = PendingIntent.getActivity(
+            this, 4202, Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentIntent(openApp)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentTitle("NEXUS AI")
             .setContentText(message)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
+    }
 
     private fun updateNotification(message: String) {
         getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, buildNotification(message))
