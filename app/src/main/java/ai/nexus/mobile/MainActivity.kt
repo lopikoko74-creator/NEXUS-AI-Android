@@ -708,7 +708,9 @@ class MainActivity : ComponentActivity() {
 
             pendingConfirmation?.let { pending ->
                 AlertDialog(
-                    onDismissRequest = { pendingConfirmation = null },
+                    // Keep the pending action alive when the dialog is dismissed by Back/outside tap.
+                    // Only the explicit Cancel button may discard it.
+                    onDismissRequest = { /* retain pending confirmation */ },
                     title = { Text("Подтвердить действие?") },
                     text = { Text("NEXUS предлагает: ${pending.plan}. Действие будет выполнено только после подтверждения.") },
                     confirmButton = {
