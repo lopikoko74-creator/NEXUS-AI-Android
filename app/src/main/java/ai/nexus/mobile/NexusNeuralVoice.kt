@@ -91,9 +91,10 @@ object NexusNeuralVoice {
             archive.delete()
             check(part.renameTo(archive)) { "Could not save voice archive" }
             extractSafely(archive, root)
-            check(isVoiceReady(root)) { "Required voice files are missing" }
+            val voiceDirectory = root.walkTopDown().firstOrNull { isVoiceReady(it) }
+                ?: error("Required voice files are missing")
             archive.delete()
-            return root
+            return voiceDirectory
         } catch (e: Exception) {
             part.delete()
             throw IllegalStateException("Не удалось загрузить офлайн-голос. Проверь интернет и повтори команду.", e)
