@@ -12,6 +12,15 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import android.speech.tts.TextToSpeech
+import android.net.Uri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.io.File
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import java.util.Locale
@@ -33,10 +42,17 @@ class NexusWakeWordService : Service() {
     private var sessionResolved = false
     private var latestPartial = ""
     private var floatingOverlay: NexusFloatingOrbOverlay? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var textToSpeech: TextToSpeech? = null
+    private var ttsReady = false
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        textToSpeech = TextToSpeech(this) { status ->
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) textToSpeech?.language = Locale("ru", "RU")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -270,18 +286,125 @@ class NexusWakeWordService : Service() {
         floatingOverlay = null
     }
 
+    /**
+     * Execute recognized requests inside the foreground service. The launcher
+     * Activity is deliberately not opened for ordinary voice commands.
+     */
     private fun deliverCommand(command: String) {
         hideFloatingOrb()
-        val launch = Intent(this, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            putExtra(MainActivity.EXTRA_WAKE_WORD_COMMAND, command)
+        serviceScope.launch {
+            updateNotification("Выполняю команду…")
+            broadcastStatus("Команда принята. Выполняю без открытия главного окна.")
+            val resultText = try {
+                executeVoiceRequest(command)
+            } catch (error: Exception) {
+                NexusDiagnostics.record(this@NexusWakeWordService, "AGENT_ERROR", error.stackTraceToString().take(1800))
+                "Не удалось выполнить команду: ${error.message ?: error.javaClass.simpleName}"
+            }
+            updateNotification("Ожидаю слово «NEXUS»")
+            broadcastStatus(resultText)
+            speak(resultText)
         }
-        try {
-            startActivity(launch)
-            broadcastStatus("Команда передана NEXUS.")
-        } catch (error: Exception) {
-            NexusDiagnostics.record(this, "VOICE_ERROR", "Не удалось открыть NEXUS для выполнения команды: ${error.message}")
-            broadcastStatus("Команда услышана, но Android не разрешил открыть NEXUS. Открой приложение и повтори команду.")
+    }
+
+    private suspend fun executeVoiceRequest(request: String): String {
+        AppCommandParser.parseYouTubeSearch(request)?.let { search ->
+            val uri = Uri.parse("https://www.youtube.com/results").buildUpon()
+                .appendQueryParameter("search_query", search.query).build()
+            return try {
+                startActivity(Intent(Intent.ACTION_VIEW, uri)
+                    .setPackage("com.google.android.youtube")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                "Открываю YouTube. Ищу: ${search.query}."
+            } catch (_: android.content.ActivityNotFoundException) {
+                startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                "Открываю поиск YouTube в браузере."
+            }
+        }
+
+        AppCommandParser.parse(request)?.let { parsed ->
+            return when (val launched = InstalledAppLauncher.launch(this, parsed.appName)) {
+                is InstalledAppLauncher.Result.Launched -> "Открыл приложение «${launched.appLabel}»."
+                is InstalledAppLauncher.Result.NotFound -> "Не нашёл установленное приложение «${launched.requestedName}»."
+                is InstalledAppLauncher.Result.Failed -> "Не удалось открыть приложение: ${launched.reason}"
+            }
+        }
+
+        val engine = NativeLlamaEngine.getInstance(this)
+        if (!engine.isModelLoaded()) {
+            val model = getSharedPreferences("nexus_settings", MODE_PRIVATE)
+                .getString("model_file", null)?.let(::File)
+            if (model == null || !model.isFile || !model.canRead()) {
+                return "Команду услышал, но локальная модель не подготовлена. Открой NEXUS и один раз выбери GGUF-файл."
+            }
+            broadcastStatus("Загружаю сохранённую локальную модель…")
+            updateNotification("Загружаю локальную модель…")
+            engine.loadModel(model)
+        }
+
+        val apps = InstalledAppLauncher.listLaunchableApps(this)
+        val screen = NexusAccessibilityService.current?.describeActiveWindow()
+            ?: "Служба специальных возможностей не подключена."
+        val observations = listOf(
+            "Installed launchable apps (exact visible labels): ${apps.joinToString(", ").take(1800)}",
+            "Initial screen: ${screen.take(1200)}"
+        )
+        val loop = NexusAgentLoop(
+            generate = { prompt -> engine.generate(prompt, 128) },
+            execute = { plan, userConfirmed ->
+                when (plan) {
+                    is NexusAiPlan.OpenApp -> when (val opened = InstalledAppLauncher.launch(this@NexusWakeWordService, plan.appName)) {
+                        is InstalledAppLauncher.Result.Launched -> NexusExecutionOutcome(true, "Открыл приложение «${opened.appLabel}».", taskCompleted = true)
+                        is InstalledAppLauncher.Result.NotFound -> NexusExecutionOutcome(false, "Приложение «${opened.requestedName}» не найдено.")
+                        is InstalledAppLauncher.Result.Failed -> NexusExecutionOutcome(false, opened.reason)
+                    }
+                    is NexusAiPlan.Scroll -> {
+                        val access = NexusAccessibilityService.current
+                        if (access == null) NexusExecutionOutcome(false, "Не подключена служба специальных возможностей.")
+                        else {
+                            val ok = access.executeApprovedAction(NexusAction.Scroll(plan.direction == "FORWARD"), true)
+                            NexusExecutionOutcome(ok, if (ok) "Экран прокручен. ${access.describeActiveWindow()}" else "Не удалось прокрутить текущий экран.")
+                        }
+                    }
+                    NexusAiPlan.GoBack -> {
+                        val access = NexusAccessibilityService.current
+                        if (access == null) NexusExecutionOutcome(false, "Не подключена служба специальных возможностей.")
+                        else {
+                            val ok = access.executeApprovedAction(NexusAction.GoBack, true)
+                            NexusExecutionOutcome(ok, if (ok) "Вернулся назад." else "Android не выполнил действие «Назад».")
+                        }
+                    }
+                    is NexusAiPlan.Wait -> {
+                        delay(plan.milliseconds.toLong())
+                        NexusExecutionOutcome(true, "Подождал ${plan.milliseconds} мс. Экран: ${NexusAccessibilityService.current?.describeActiveWindow() ?: "недоступен"}")
+                    }
+                    is NexusAiPlan.TapText -> NexusExecutionOutcome(false, "Для нажатия «${plan.exactLabel}» требуется подтверждение в приложении NEXUS.", requiresConfirmation = true)
+                    is NexusAiPlan.EnterText -> NexusExecutionOutcome(false, "Для ввода текста требуется подтверждение в приложении NEXUS.", requiresConfirmation = true)
+                    is NexusAiPlan.Answer, is NexusAiPlan.Done, is NexusAiPlan.Unsupported ->
+                        NexusExecutionOutcome(false, "Ответ обрабатывается планировщиком.")
+                }
+            },
+            maxSteps = 10,
+            onEvent = { event ->
+                when (event.type) {
+                    NexusAgentEventType.THINKING -> broadcastStatus(event.title)
+                    NexusAgentEventType.ACTION_STARTED -> broadcastStatus(event.title + ": " + event.detail)
+                    else -> Unit
+                }
+            }
+        )
+        return when (val result = loop.run(request, observations)) {
+            is NexusAgentResult.Completed -> result.summary
+            is NexusAgentResult.Unsupported -> result.reason
+            is NexusAgentResult.Failed -> result.reason
+            is NexusAgentResult.AwaitingConfirmation -> result.explanation + " Открой NEXUS, чтобы продолжить с подтверждением."
+        }
+    }
+
+    private fun speak(message: String) {
+        if (message.isBlank()) return
+        if (ttsReady) {
+            textToSpeech?.speak(message, TextToSpeech.QUEUE_FLUSH, null, "nexus-service-response")
         }
     }
 
@@ -375,6 +498,10 @@ class NexusWakeWordService : Service() {
 
     override fun onDestroy() {
         stopListening()
+        serviceScope.cancel()
+        textToSpeech?.stop()
+        textToSpeech?.shutdown()
+        textToSpeech = null
         super.onDestroy()
     }
 
