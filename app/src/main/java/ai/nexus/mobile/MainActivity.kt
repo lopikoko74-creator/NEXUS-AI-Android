@@ -807,7 +807,10 @@ class MainActivity : ComponentActivity() {
 
             pendingConfirmation?.let { pending ->
                 AlertDialog(
-                    onDismissRequest = { pendingConfirmation = null },
+                    onDismissRequest = {
+                        pendingConfirmation = null
+                        NexusPendingActionStore.pending = null
+                    },
                     title = { Text("Подтвердить действие?") },
                     text = { Text("NEXUS предлагает: ${pending.plan}. Действие будет выполнено только после подтверждения.") },
                     confirmButton = {
