@@ -269,7 +269,7 @@ class MainActivity : ComponentActivity() {
             var showUpdateSettings by remember { mutableStateOf(false) }
             var showDiagnostics by remember { mutableStateOf(false) }
             var diagnosticsText by remember { mutableStateOf("") }
-            var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(null) }
+            var pendingConfirmation by remember { mutableStateOf<NexusPendingConfirmation?>(NexusPendingActionStore.pending) }
             var chatLines by remember {
                 mutableStateOf(listOf(ChatLine(1L, ChatRole.ASSISTANT, "NEXUS готов", "Я работаю на локальной модели. Напиши задачу — покажу план действий, выполнение каждого шага и итог.")))
             }
@@ -813,6 +813,7 @@ class MainActivity : ComponentActivity() {
                     confirmButton = {
                         TextButton(onClick = {
                             pendingConfirmation = null
+                            NexusPendingActionStore.pending = null
                             busy = true
                             lifecycleScope.launch {
                                 val result = try {
@@ -827,6 +828,7 @@ class MainActivity : ComponentActivity() {
                     dismissButton = {
                         TextButton(onClick = {
                             pendingConfirmation = null
+                            NexusPendingActionStore.pending = null
                             busy = false
                             addLine(ChatRole.ASSISTANT, "Действие отменено", "Я не выполнял это действие.")
                         }) { Text("Отмена") }
