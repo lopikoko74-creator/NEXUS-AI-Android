@@ -166,7 +166,7 @@ class NexusWakeWordService : Service() {
             consecutiveErrors = 0
             val phrase = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 ?.firstOrNull()?.trim().orEmpty()
-            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_RESULT", "Финальный результат: " + phrase.ifBlank { "<пусто>" })
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_RESULT", if (phrase.isBlank()) "Получен пустой финальный результат" else "Получен финальный результат (${phrase.length} символов)")
             handleRecognizedPhrase(phrase)
             scheduleRestart(900L)
         }
@@ -175,7 +175,7 @@ class NexusWakeWordService : Service() {
             val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
             if (partial.isBlank()) return
             latestPartial = partial
-            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_PARTIAL", partial)
+            NexusDiagnostics.record(this@NexusWakeWordService, "VOICE_PARTIAL", "Получен частичный результат (${partial.length} символов)")
             // Some on-device recognizers stream partial hypotheses forever and never
             // deliver onResults. Finalize the last stable hypothesis after silence.
             handler.removeCallbacks(partialFinalize)
@@ -192,7 +192,7 @@ class NexusWakeWordService : Service() {
             listening = false
             finalResultPending = false
             handler.removeCallbacks(finalResultWatchdog)
-            NexusDiagnostics.record(this, "VOICE_FALLBACK", "Финализация последней частичной гипотезы после " + PARTIAL_FINALIZE_DELAY_MS + " мс тишины: " + phrase)
+            NexusDiagnostics.record(this, "VOICE_FALLBACK", "Частичная гипотеза финализирована после " + PARTIAL_FINALIZE_DELAY_MS + " мс тишины")
             try { recognizer?.cancel() } catch (_: Exception) {}
             handleRecognizedPhrase(phrase)
             scheduleRestart(900L)
@@ -572,6 +572,6 @@ class NexusWakeWordService : Service() {
         private const val NOTIFICATION_ID = 4201
         private const val COMMAND_WINDOW_MS = 10_000L
         private const val FINAL_RESULT_TIMEOUT_MS = 8_000L
-        private const val PARTIAL_FINALIZE_DELAY_MS = 3_000L
+        private const val PARTIAL_FINALIZE_DELAY_MS = 1_600L
     }
 }
