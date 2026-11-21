@@ -573,6 +573,6 @@ class NexusWakeWordService : Service() {
         private const val NOTIFICATION_ID = 4201
         private const val COMMAND_WINDOW_MS = 10_000L
         private const val FINAL_RESULT_TIMEOUT_MS = 8_000L
-        private const val PARTIAL_FINALIZE_DELAY_MS = 3_000L
+        private const val PARTIAL_FINALIZE_DELAY_MS = 1_600L
     }
 }
