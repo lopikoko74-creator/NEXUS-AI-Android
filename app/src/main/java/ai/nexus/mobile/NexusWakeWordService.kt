@@ -444,7 +444,8 @@ class NexusWakeWordService : Service() {
     private suspend fun speak(message: String) {
         if (message.isBlank()) return
         try {
-            NexusNeuralVoice.speak(this, message)
+            val spoken = NexusNeuralVoice.speak(this, message)
+            check(spoken) { "Neural voice is already speaking or received empty text" }
             NexusDiagnostics.record(this, "VOICE_TTS", "Ответ озвучен локальным нейросетевым голосом Piper Denis")
         } catch (error: Exception) {
             NexusDiagnostics.record(this, "VOICE_TTS_FALLBACK", error.stackTraceToString().take(1200))
