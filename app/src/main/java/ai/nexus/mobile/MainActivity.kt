@@ -432,7 +432,7 @@ class MainActivity : ComponentActivity() {
                         val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                         if (spoken.isNotBlank()) {
                             voiceStatus = "Распознано: $spoken"
-                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано: $spoken")
+                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано ${spoken.length} символов")
                             submitRequest(spoken)
                         } else {
                             voiceStatus = "Речь не распознана. Повтори команду."
