@@ -303,7 +303,17 @@ class MainActivity : ComponentActivity() {
                         result.explanation.also { addLine(ChatRole.ASSISTANT, "Требуется подтверждение", it) }
                     }
                 }
-                textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                lifecycleScope.launch {
+                    try {
+                        val spoken = NexusNeuralVoice.speak(applicationContext, spokenReply)
+                        if (!spoken) {
+                            textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                        }
+                    } catch (error: Exception) {
+                        NexusDiagnostics.record(this@MainActivity, "VOICE_TTS_FALLBACK", error.stackTraceToString().take(1200))
+                        textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                    }
+                }
             }
 
             fun submitRequest(rawRequest: String) {
