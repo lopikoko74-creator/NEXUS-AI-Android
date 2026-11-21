@@ -31,8 +31,8 @@ object NexusNeuralVoice {
     @Volatile private var engine: OfflineTts? = null
     @Volatile private var engineDirectory: File? = null
 
-    suspend fun speak(context: Context, text: String) = withContext(Dispatchers.IO) {
-        if (text.isBlank() || !speaking.compareAndSet(false, true)) return@withContext
+    suspend fun speak(context: Context, text: String): Boolean = withContext(Dispatchers.IO) {
+        if (text.isBlank() || !speaking.compareAndSet(false, true)) return@withContext false
         var track: AudioTrack? = null
         try {
             val dir = ensureVoiceInstalled(context.applicationContext)
@@ -45,9 +45,11 @@ object NexusNeuralVoice {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build()
             track = AudioTrack.Builder().setAudioAttributes(attrs).setAudioFormat(format)
                 .setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(audio.samples.size * 4).build()
-            check(track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING) > 0)
+            val written = track.write(audio.samples, 0, audio.samples.size, AudioTrack.WRITE_BLOCKING)
+            check(written == audio.samples.size) { "AudioTrack accepted only ${written} of ${audio.samples.size} samples" }
             track.play()
             delay(audio.samples.size * 1000L / audio.sampleRate + 180L)
+            true
         } finally {
             try { track?.stop() } catch (_: Exception) {}
             track?.release()

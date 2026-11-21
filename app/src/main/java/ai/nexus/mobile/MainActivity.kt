@@ -303,7 +303,17 @@ class MainActivity : ComponentActivity() {
                         result.explanation.also { addLine(ChatRole.ASSISTANT, "Требуется подтверждение", it) }
                     }
                 }
-                textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                lifecycleScope.launch {
+                    try {
+                        val spoken = NexusNeuralVoice.speak(applicationContext, spokenReply)
+                        if (!spoken) {
+                            textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                        }
+                    } catch (error: Exception) {
+                        NexusDiagnostics.record(this@MainActivity, "VOICE_TTS_FALLBACK", error.stackTraceToString().take(1200))
+                        textToSpeech?.speak(spokenReply, TextToSpeech.QUEUE_FLUSH, null, "nexus-agent-reply")
+                    }
+                }
             }
 
             fun submitRequest(rawRequest: String) {
@@ -422,7 +432,7 @@ class MainActivity : ComponentActivity() {
                         val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
                         if (spoken.isNotBlank()) {
                             voiceStatus = "Распознано: $spoken"
-                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано: $spoken")
+                            NexusDiagnostics.record(this@MainActivity, "VOICE", "Распознано ${spoken.length} символов")
                             submitRequest(spoken)
                         } else {
                             voiceStatus = "Речь не распознана. Повтори команду."
@@ -808,8 +818,8 @@ class MainActivity : ComponentActivity() {
             pendingConfirmation?.let { pending ->
                 AlertDialog(
                     onDismissRequest = {
-                        pendingConfirmation = null
-                        NexusPendingActionStore.pending = null
+                        // Back/outside dismissal must not silently discard a pending action.
+                        // Only the explicit Cancel button clears the confirmation.
                     },
                     title = { Text("Подтвердить действие?") },
                     text = { Text("NEXUS предлагает: ${pending.plan}. Действие будет выполнено только после подтверждения.") },
