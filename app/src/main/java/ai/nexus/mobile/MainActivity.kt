@@ -808,8 +808,8 @@ class MainActivity : ComponentActivity() {
             pendingConfirmation?.let { pending ->
                 AlertDialog(
                     onDismissRequest = {
-                        pendingConfirmation = null
-                        NexusPendingActionStore.pending = null
+                        // Back/outside dismissal must not silently discard a pending action.
+                        // Only the explicit Cancel button clears the confirmation.
                     },
                     title = { Text("Подтвердить действие?") },
                     text = { Text("NEXUS предлагает: ${pending.plan}. Действие будет выполнено только после подтверждения.") },
