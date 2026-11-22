@@ -1,0 +1,37 @@
+name: NEXUS OS inventory checks
+on:
+  push:
+    paths:
+      - 'os/**'
+      - '.github/workflows/nexus-os-inventory.yml'
+  pull_request:
+    paths:
+      - 'os/**'
+      - '.github/workflows/nexus-os-inventory.yml'
+jobs:
+  inventory-tool:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Compile inventory collector
+        run: python -m py_compile os/tools/collect_device_inventory.py
+      - name: Run inventory unit tests
+        run: python -m unittest discover -s os/tests -v
+      - name: Verify read-only command policy
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('os/tools/collect_device_inventory.py').read_text()
+          forbidden = ('"flash"', '"erase"', '"format"', '"unlock"', '"lock"', '"reboot"', '"sideload"')
+          found = [item for item in forbidden if item in source]
+          if found:
+              raise SystemExit(f'Forbidden write-capable command token(s): {found}')
+          required = ('"getprop"', '"uname"', '"getvar"')
+          missing = [item for item in required if item not in source]
+          if missing:
+              raise SystemExit(f'Missing expected read-only inventory commands: {missing}')
+          print('Read-only command policy check passed.')
+          PY
