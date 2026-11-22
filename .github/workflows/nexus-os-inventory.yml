@@ -18,7 +18,8 @@ jobs:
           python-version: "3.11"
       - name: Compile inventory collector
         run: python -m py_compile os/tools/collect_device_inventory.py
-      - name: Run inventory unit tests\n        run: python -m unittest discover -s os/tests -v\n      - name: Verify read-only command policy
+      - name: Run inventory unit tests
+        run: python -m unittest discover -s os/tests -v
         run: |
           python - <<'PY'
           from pathlib import Path
