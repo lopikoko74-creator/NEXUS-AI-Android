@@ -1,11 +1,16 @@
+import importlib.util
 import unittest
+from pathlib import Path
 
-from os.tools.collect_device_inventory import FASTBOOT_VARIABLES, parse_devices
+MODULE_PATH = Path(__file__).parents[1] / "tools" / "collect_device_inventory.py"
+SPEC = importlib.util.spec_from_file_location("nexus_inventory", MODULE_PATH)
+inventory = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(inventory)
 
 
 class InventoryParserTests(unittest.TestCase):
     def test_adb_serial_is_never_persisted(self):
-        devices = parse_devices(
+        devices = inventory.parse_devices(
             "List of devices attached\nABC123456 device product:BG7n model:TECNO_BG7n device:BG7n\n"
         )
         self.assertEqual(len(devices), 1)
@@ -14,11 +19,13 @@ class InventoryParserTests(unittest.TestCase):
         self.assertEqual(devices[0]["product"], "BG7n")
 
     def test_empty_device_list(self):
-        self.assertEqual(parse_devices("List of devices attached\n"), [])
+        self.assertEqual(inventory.parse_devices("List of devices attached\n"), [])
 
     def test_fastboot_queries_are_read_only_metadata(self):
         forbidden = {"flash", "erase", "format", "unlock", "lock", "reboot", "sideload"}
-        self.assertTrue(all(not any(word in item for word in forbidden) for item in FASTBOOT_VARIABLES))
+        self.assertTrue(
+            all(not any(word in item for word in forbidden) for item in inventory.FASTBOOT_VARIABLES)
+        )
 
 
 if __name__ == "__main__":
