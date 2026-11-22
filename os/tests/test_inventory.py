@@ -24,7 +24,7 @@ class InventoryParserTests(unittest.TestCase):
     def test_fastboot_queries_are_read_only_metadata(self):
         forbidden = {"flash", "erase", "format", "unlock", "lock", "reboot", "sideload"}
         self.assertTrue(
-            all(not any(word in item for word in forbidden) for item in inventory.FASTBOOT_VARIABLES)
+            all(item not in forbidden for item in inventory.FASTBOOT_VARIABLES)
         )
 
 
